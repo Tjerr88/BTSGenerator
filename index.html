@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
-<title>BuildStrong — Unity Style</title>
+<title>BuildStrong + PlanStrong — Unity Style</title>
 <style>
   :root{color-scheme:dark}
   *{box-sizing:border-box}
@@ -12,9 +12,10 @@
   h1{margin:0 0 6px;font-size:28px}
   h2{margin:0;font-size:18px}
   .muted{opacity:.75;font-size:12px}
+
   .tabs{display:flex;gap:8px;margin:10px 0 12px;flex-wrap:wrap}
   .tab{
-    flex:1;min-width:110px;cursor:pointer;
+    flex:1;min-width:120px;cursor:pointer;
     background:#101a30;border:1px solid rgba(255,255,255,.14);color:#e6eaf2;
     padding:12px;border-radius:12px;font-weight:900
   }
@@ -32,7 +33,6 @@
     cursor:pointer;font-weight:900
   }
   .btn.ghost{background:#0f1a34;border:1px solid rgba(255,255,255,.16)}
-  .btn.small{padding:10px 12px}
   .btn:active{transform:translateY(1px)}
 
   label{font-size:12px;opacity:.85;display:block;margin:8px 0 4px}
@@ -79,10 +79,16 @@
 
   .setupCard h3{margin:0 0 10px;font-size:16px}
   .setupRow{
-    display:grid;grid-template-columns:160px 1fr 120px 110px 160px;
+    display:grid;grid-template-columns:160px 1fr 140px 120px 160px;
     gap:10px;align-items:center;margin:10px 0
   }
   @media (max-width:760px){ .setupRow{grid-template-columns:1fr;gap:8px} }
+
+  .setupRowPS{
+    display:grid;grid-template-columns:160px 1fr 1fr 1fr 1fr;
+    gap:10px;align-items:center;margin:10px 0
+  }
+  @media (max-width:760px){ .setupRowPS{grid-template-columns:1fr;gap:8px} }
 
   details{border:1px solid rgba(255,255,255,.08);border-radius:12px;background:#0f1a34}
   summary{list-style:none;cursor:pointer;padding:12px;font-weight:950}
@@ -148,6 +154,8 @@
             <option value="BTS3">BTS3</option>
             <option value="BTS4">BTS4</option>
             <option value="BTS6" selected>BTS6</option>
+            <option value="PS4">PS4</option>
+            <option value="PSA">PS-A (Advanced)</option>
           </select>
         </div>
         <div>
@@ -164,11 +172,7 @@
 
       <details style="margin-top:12px" open>
         <summary>Rules</summary>
-        <div class="panel muted">
-          Week-wave: <b>15–28–22–35</b> (Deload / Development / Maintenance / Stress)<br/>
-          Zone split (per week): <b>15% Heavy</b> / <b>35% Medium</b> / <b>50% Light</b><br/>
-          Ladder: <b>C = floor(0.66 × RM)</b>, choose <b>a+b=C</b>, enforce <b>delta20</b> between rungs.
-        </div>
+        <div class="panel muted" id="rulesText"></div>
       </details>
 
       <div class="row stack" style="margin-top:12px">
@@ -181,8 +185,9 @@
 
 <script>
 (() => {
-  const LS_KEY = "BUILDSTRONG_UNITYSTYLE_COMPLETE_V1";
+  const LS_KEY = "BUILDS+PLANSTRONG_UNITYSTYLE_V1";
 
+  // 4-week wave (both systems)
   const WEEK_WAVE = [
     { pct: 0.15, name: "Deload" },
     { pct: 0.28, name: "Development" },
@@ -190,14 +195,46 @@
     { pct: 0.35, name: "Stress" },
   ];
 
-  const ZONES = [
+  // BuildStrong zones (BTS)
+  const BTS_ZONES = [
     { key:"H", name:"Heavy",  range:"4–7",   pct:0.15 },
     { key:"M", name:"Medium", range:"8–11",  pct:0.35 },
     { key:"L", name:"Light",  range:"12–15", pct:0.50 },
   ];
 
+  // PlanStrong intensity anchors (rep-ranges)
+  const PS_RANGES = {
+    L: "8–12 RM",
+    M: "5–7 RM",
+    H: "3–4 RM",
+    SH:"2–3 RM"
+  };
+
+  // PlanStrong session-position split inside a week (per lift):
+  // in a given week, each lift gets 15% once, 35% once, 50% once
+  const PS_SESSION_POS = [
+    { key:"P15", name:"Lift 1", pct:0.15 },
+    { key:"P35", name:"Lift 2", pct:0.35 },
+    { key:"P50", name:"Lift 3", pct:0.50 },
+  ];
+
+  // PlanStrong intensity splits (per session per lift)
+  const PS4_SPLIT = [
+    { key:"L",  pct:0.50 },
+    { key:"M",  pct:0.35 },
+    { key:"H",  pct:0.15 },
+  ];
+  const PSA_SPLIT = [
+    { key:"SH", pct:0.05 }, // capped 1 rep per ladder
+    { key:"H",  pct:0.12 },
+    { key:"M",  pct:0.34 },
+    { key:"L",  pct:0.49 },
+  ];
+
   const TEMPLATES = {
+    // ===== BuildStrong (BTS) =====
     BTS3: {
+      type:"BTS",
       name:"BTS3",
       movements:[
         {id:"push",  label:"Push"},
@@ -211,8 +248,8 @@
       ],
     },
 
-    // IMPORTANT: BTS4 "Upper" is a SESSION CONCEPT, but movements stay Push+Pull separately.
     BTS4: {
+      type:"BTS",
       name:"BTS4",
       movements:[
         {id:"push",  label:"Push"},
@@ -240,6 +277,7 @@
     },
 
     BTS6: {
+      type:"BTS",
       name:"BTS6",
       movements:[
         {id:"pushHor", label:"Push Horizontal"},
@@ -268,64 +306,249 @@
         ]},
       ],
     },
+
+    // ===== PlanStrong (PS) =====
+    PS4: {
+      type:"PS",
+      name:"PS4",
+      lifts:[
+        {id:"squat", label:"Squat"},
+        {id:"hinge", label:"Hinge"},
+        {id:"push",  label:"Push"},
+        {id:"pull",  label:"Pull"},
+      ],
+      ladders:3,
+      split:PS4_SPLIT,
+      // 3 sessions/week. Each session has 3 slots (15/35/50 of the week's reps for that lift).
+      // Upper is always present, but it's push and pull separately and both take the session-slot pct.
+      sessions:[
+        { title:"Session 1", slots:[
+          {lift:"squat", pos:"P15"},
+          {lift:"upper", pos:"P35"}, // expands to push+pull
+          {lift:"hinge", pos:"P50"},
+        ]},
+        { title:"Session 2", slots:[
+          {lift:"upper", pos:"P15"},
+          {lift:"hinge", pos:"P35"},
+          {lift:"squat", pos:"P50"},
+        ]},
+        { title:"Session 3", slots:[
+          {lift:"hinge", pos:"P15"},
+          {lift:"squat", pos:"P35"},
+          {lift:"upper", pos:"P50"},
+        ]},
+      ],
+    },
+
+    PSA: {
+      type:"PS",
+      name:"PS-A",
+      lifts:[
+        {id:"squat", label:"Squat"},
+        {id:"hinge", label:"Hinge"},
+        {id:"push",  label:"Push"},
+        {id:"pull",  label:"Pull"},
+      ],
+      ladders:4,
+      split:PSA_SPLIT,
+      sessions:[
+        { title:"Session 1", slots:[
+          {lift:"squat", pos:"P15"},
+          {lift:"upper", pos:"P35"},
+          {lift:"hinge", pos:"P50"},
+        ]},
+        { title:"Session 2", slots:[
+          {lift:"upper", pos:"P15"},
+          {lift:"hinge", pos:"P35"},
+          {lift:"squat", pos:"P50"},
+        ]},
+        { title:"Session 3", slots:[
+          {lift:"hinge", pos:"P15"},
+          {lift:"squat", pos:"P35"},
+          {lift:"upper", pos:"P50"},
+        ]},
+      ],
+    },
   };
 
   const $ = (s) => document.querySelector(s);
   const esc = (s) => String(s ?? "").replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
   const mod = (n,m)=>((n%m)+m)%m;
 
-  function zoneTargets(blockVolume){
-    const out={};
-    for (const z of ZONES) out[z.key]=Math.round(Number(blockVolume)*z.pct);
-    return out;
+  // ===== BuildStrong (BTS) ladder rules =====
+  function capC(repMax){ return Math.max(1, Math.floor(0.66 * (Number(repMax)||1))); }
+
+  // choose a+b=C with delta20 between a and b (fallback if needed)
+  function pickAB(C){
+    const candidates=[];
+    for (let a=1;a<=C-1;a++){
+      const b=C-a;
+      const delta=Math.abs(a-b)/Math.max(a,b);
+      if (delta>=0.20) candidates.push({a,b});
+    }
+    if (!candidates.length) return {a:1,b:Math.max(1,C-1)};
+    candidates.sort((x,y)=>{
+      const rx=Math.max(x.a,x.b)/Math.max(1,Math.min(x.a,x.b));
+      const ry=Math.max(y.a,y.b)/Math.max(1,Math.min(y.a,y.b));
+      if (rx!==ry) return rx-ry;
+      return y.a-x.a;
+    });
+    const best=candidates[0];
+    return {a:Math.min(best.a,best.b), b:Math.max(best.a,best.b)};
   }
 
-  // Ladder rule:
-  // C = floor(0.66*RM)
-  // find a such that:
-  // - a + b = C
-  // - delta20 between a and b: (b-a)/b >= 0.2
-  // - delta20 between b and C: (C-b)/C >= 0.2  => a/C >= 0.2
-  // choose a closest to C/3 (stable feeling)
-  function buildLadder(repMax){
-    const rm = Math.max(1, Number(repMax)||1);
-    const C = Math.max(1, Math.floor(0.66 * rm));
-
-    const minA = Math.max(1, Math.ceil(0.20 * C));        // ensures b vs C delta20
-    const maxA = Math.max(1, Math.floor(0.50 * C));       // keep a <= b
-    let best = null;
-
-    for (let a=minA; a<=maxA; a++){
-      const b = C - a;
-      if (b < 1) continue;
-      const deltaAB = (b - a) / b;        // >= 0.2
-      const deltaBC = (C - b) / C;        // = a/C >= 0.2
-      if (deltaAB >= 0.20 && deltaBC >= 0.20){
-        const score = Math.abs(a - (C/3));
-        if (!best || score < best.score) best = {a,b,score};
-      }
-    }
-
-    if (!best){
-      // fallback: still keep a+b=C, and keep it reasonable
-      const a = Math.max(1, Math.floor(C/3));
-      const b = Math.max(1, C-a);
-      return {a:Math.min(a,b), b:Math.max(a,b), C, volume:(a+b+C)};
-    }
-    return {a:best.a, b:best.b, C, volume:(best.a+best.b+C)};
+  function buildBTSLadder(repMax){
+    const C=capC(repMax);
+    const ab=pickAB(C);
+    return {a:ab.a,b:ab.b,C,volume:ab.a+ab.b+C};
   }
 
-  function planForTarget(targetReps, ladder){
+  // leftover can be done as a single chunk <=C (simple, "clients don't need to know")
+  function planBTS(targetReps, ladder){
     const t = Math.max(0, targetReps|0);
     const full = ladder.volume>0 ? Math.floor(t/ladder.volume) : 0;
     const leftover = ladder.volume>0 ? (t % ladder.volume) : t;
-    // leftover is "hidden"; we only display its total
-    return { fullLadders: full, leftoverTotal: leftover };
+    const leftoverClamped = Math.min(ladder.C, leftover);
+    return { fullLadders: full, leftoverTotal: leftoverClamped };
   }
 
-  function buildDefaultStacks(templateKey){
+  // ===== PlanStrong (PS) planning =====
+
+  // Robust integer allocation with constraints and "fill SH"
+  function allocByPerc(total, split, opts={}){
+    const items = split.map(s=>({key:s.key, pct:s.pct, raw:total*s.pct, base:Math.floor(total*s.pct), frac:(total*s.pct)%1}));
+    let used = items.reduce((a,x)=>a+x.base,0);
+    let rem = total - used;
+
+    // optional SH min=1 when total>0
+    if (opts.minKey && total>0){
+      const it = items.find(x=>x.key===opts.minKey);
+      if (it && it.base===0){
+        it.base = 1; rem -= 1;
+      }
+    }
+
+    // optional max caps
+    const maxMap = opts.maxMap || {};
+
+    // distribute remainder by largest fractional first
+    items.sort((a,b)=>b.frac-a.frac);
+    let i=0;
+    while (rem>0 && i<10000){
+      const it = items[i % items.length];
+      const cap = (maxMap[it.key] ?? Infinity);
+      if (it.base < cap){
+        it.base += 1;
+        rem -= 1;
+      }
+      i++;
+      // if we loop too long due to caps, break
+      if (i>items.length*20 && rem>0){
+        // dump remainder into last non-capped (prefer L)
+        const pref = items.find(x=>x.key==="L") || items[0];
+        const cap2 = (maxMap[pref.key] ?? Infinity);
+        if (pref.base < cap2){ pref.base += 1; rem -= 1; }
+        else break;
+      }
+    }
+
+    // if rem went negative (due to minKey), pull back from largest buckets (prefer L then M)
+    if (rem<0){
+      const order = ["L","M","H","SH"];
+      for (const k of order){
+        const it = items.find(x=>x.key===k);
+        while (it && it.base>0 && rem<0 && (opts.minKey!==k || it.base>1)){
+          it.base -= 1;
+          rem += 1;
+        }
+      }
+    }
+
+    const out={};
+    for (const it of items) out[it.key]=it.base;
+    return out;
+  }
+
+  function splitAcrossLadders(total, ladders){
+    const base = Math.floor(total / ladders);
+    const rem = total % ladders;
+    const arr = Array.from({length:ladders}, (_,i)=>base + (i<rem ? 1 : 0)); // remainder front-loaded
+    return arr;
+  }
+
+  // Plan one PS lift instance: returns ladder lines and reps-per-ladder
+  function planPSLift(sessionReps, templateKey){
     const tpl = TEMPLATES[templateKey];
-    const stacks = {};
+    const ladders = tpl.ladders;
+    const split = tpl.split;
+
+    // SH caps: max 1 per ladder (so total SH <= ladders)
+    const maxMap = {};
+    if (templateKey==="PSA"){
+      maxMap["SH"] = ladders;
+    }
+
+    // Ensure SH "filled" (min 1 if sessionReps>0)
+    const totals = allocByPerc(sessionReps, split, templateKey==="PSA"
+      ? {minKey:"SH", maxMap}
+      : {});
+
+    // Build per-ladder counts
+    const per = {};
+    for (const k of Object.keys(totals)){
+      per[k] = splitAcrossLadders(totals[k], ladders);
+    }
+
+    // Apply SH cap 1 per ladder (if any)
+    if (templateKey==="PSA"){
+      // force SH as 1s in first ladders until totals.SH
+      const sh = totals["SH"] || 0;
+      per["SH"] = Array.from({length:ladders}, (_,i)=> (i<sh ? 1 : 0));
+      // recompute L to fix sum back to sessionReps
+      const sumOther = ["H","M","SH"].reduce((a,k)=>a + (per[k]?per[k].reduce((x,y)=>x+y,0):0), 0);
+      const Lneeded = Math.max(0, sessionReps - sumOther);
+      per["L"] = splitAcrossLadders(Lneeded, ladders);
+    }
+
+    const lines=[];
+    const repsPerLadder=[];
+    for (let i=0;i<ladders;i++){
+      const L = (per["L"]?.[i] ?? 0);
+      const M = (per["M"]?.[i] ?? 0);
+      const H = (per["H"]?.[i] ?? 0);
+      const SH= (per["SH"]?.[i] ?? 0);
+      const line = (tpl.name==="PS-A")
+        ? `${L}-${M}-${H}-${SH}`
+        : `${L}-${M}-${H}`;
+      lines.push(line);
+      repsPerLadder.push(L+M+H+SH);
+    }
+    return {lines, repsPerLadder, totals};
+  }
+
+  // Week reps per lift in PS: weekVolume = blockVolume * weekWavePct (example: 300*0.15=45)
+  // Session reps per lift: split weekVolume into [15,35,50]% by rounding + remainder fix
+  function splitWeekIntoSessions(weekVolume){
+    const raw = PS_SESSION_POS.map(p=>weekVolume*p.pct);
+    const base = raw.map(x=>Math.floor(x));
+    let used = base.reduce((a,b)=>a+b,0);
+    let rem = weekVolume - used;
+    // distribute remainder to largest fractional
+    const fr = raw.map((x,i)=>({i, frac:x - Math.floor(x)})).sort((a,b)=>b.frac-a.frac);
+    let j=0;
+    while (rem>0){
+      base[fr[j%fr.length].i] += 1;
+      rem--;
+      j++;
+    }
+    return {P15:base[0], P35:base[1], P50:base[2]};
+  }
+
+  // ===== State =====
+
+  function buildDefaultStacksBTS(templateKey){
+    const tpl=TEMPLATES[templateKey];
+    const stacks={};
     for (const mv of tpl.movements){
       stacks[mv.id] = {
         H:{exercise:"",load:"",repMax:5},
@@ -336,70 +559,106 @@
     return stacks;
   }
 
+  function buildDefaultStacksPS(){
+    return {
+      squat:{exercise:"", loadL:"", loadM:"", loadH:"", loadSH:""},
+      hinge:{exercise:"", loadL:"", loadM:"", loadH:"", loadSH:""},
+      push: {exercise:"", loadL:"", loadM:"", loadH:"", loadSH:""},
+      pull: {exercise:"", loadL:"", loadM:"", loadH:"", loadSH:""},
+    };
+  }
+
   function defaultState(){
     return {
       template:"BTS6",
       blockVolume:300,
       sessionCursor:0,
-      stacks:buildDefaultStacks("BTS6"),
-      remaining:{},
-      progress:{},
-    };
-  }
 
-  function ensureRemaining(st){
-    const tpl=TEMPLATES[st.template];
-    const tgt=zoneTargets(st.blockVolume);
-    st.remaining = st.remaining || {};
-    for (const mv of tpl.movements){
-      st.remaining[mv.id] = st.remaining[mv.id] || {};
-      for (const z of ZONES){
-        if (typeof st.remaining[mv.id][z.key] !== "number") st.remaining[mv.id][z.key] = tgt[z.key];
-      }
-    }
+      // BTS
+      btsStacks: buildDefaultStacksBTS("BTS6"),
+      btsRemaining:{}, // per movement per zone (block-level)
+      btsProgress:{},
+
+      // PS
+      psStacks: buildDefaultStacksPS(),
+      psRemaining:{},  // per lift total remaining reps for full block (blockVolume)
+      psProgress:{},   // per session per lift: laddersDone + appliedReps
+    };
   }
 
   function loadState(){
     try{
       const raw = localStorage.getItem(LS_KEY);
-      if (!raw){
-        const st=defaultState(); ensureRemaining(st); return st;
-      }
-      const st=JSON.parse(raw);
-      if (!st.template) return defaultState();
-      if (!st.progress) st.progress = {};
-      if (!st.stacks) st.stacks = buildDefaultStacks(st.template);
-      if (typeof st.sessionCursor !== "number") st.sessionCursor = 0;
-      if (typeof st.blockVolume !== "number") st.blockVolume = Number(st.blockVolume)||300;
-
-      // upgrade stacks if template changed / missing movement ids
-      const tpl=TEMPLATES[st.template];
-      for (const mv of tpl.movements){
-        if (!st.stacks[mv.id]){
-          st.stacks[mv.id]={H:{exercise:"",load:"",repMax:5},M:{exercise:"",load:"",repMax:10},L:{exercise:"",load:"",repMax:15}};
-        }
-      }
-      ensureRemaining(st);
-      return st;
+      if (!raw) return initState(defaultState());
+      const st = JSON.parse(raw);
+      return initState(st);
     }catch(e){
       console.error(e);
-      const st=defaultState(); ensureRemaining(st); return st;
+      return initState(defaultState());
     }
   }
 
-  let state = loadState();
-  function saveState(){ localStorage.setItem(LS_KEY, JSON.stringify(state)); }
-
-  function movementLabel(mvId){
-    const tpl=TEMPLATES[state.template];
-    return (tpl.movements.find(m=>m.id===mvId)?.label) || mvId;
+  function saveState(){
+    localStorage.setItem(LS_KEY, JSON.stringify(state));
   }
 
-  function progressKey(globalWeekIndex, sessionIndex, blockIndex){
+  function initState(st){
+    if (!st.template) st.template="BTS6";
+    if (!st.blockVolume) st.blockVolume=300;
+    if (typeof st.sessionCursor!=="number") st.sessionCursor=0;
+
+    if (!st.btsStacks) st.btsStacks = buildDefaultStacksBTS(st.template.startsWith("BTS") ? st.template : "BTS6");
+    if (!st.btsRemaining) st.btsRemaining={};
+    if (!st.btsProgress) st.btsProgress={};
+
+    if (!st.psStacks) st.psStacks = buildDefaultStacksPS();
+    if (!st.psRemaining) st.psRemaining={};
+    if (!st.psProgress) st.psProgress={};
+
+    // ensure BTS stacks for template
+    if (TEMPLATES[st.template]?.type==="BTS"){
+      const tpl=TEMPLATES[st.template];
+      for (const mv of tpl.movements){
+        if (!st.btsStacks[mv.id]){
+          st.btsStacks[mv.id]={H:{exercise:"",load:"",repMax:5},M:{exercise:"",load:"",repMax:10},L:{exercise:"",load:"",repMax:15}};
+        }
+      }
+      ensureBTSRemaining(st);
+    }
+
+    // ensure PS remaining
+    if (TEMPLATES[st.template]?.type==="PS"){
+      ensurePSRemaining(st);
+    }
+    return st;
+  }
+
+  let state = loadState();
+
+  // ===== BTS remaining/progress =====
+  function btsZoneTargets(blockVolume){
+    const out={};
+    for (const z of BTS_ZONES) out[z.key]=Math.round(Number(blockVolume)*z.pct);
+    return out;
+  }
+
+  function ensureBTSRemaining(st){
+    const tpl=TEMPLATES[st.template];
+    const tgt=btsZoneTargets(st.blockVolume);
+    st.btsRemaining = st.btsRemaining || {};
+    for (const mv of tpl.movements){
+      st.btsRemaining[mv.id] = st.btsRemaining[mv.id] || {};
+      for (const z of BTS_ZONES){
+        if (typeof st.btsRemaining[mv.id][z.key] !== "number") st.btsRemaining[mv.id][z.key] = tgt[z.key];
+      }
+    }
+  }
+
+  function btsProgressKey(globalWeekIndex, sessionIndex, blockIndex){
     return `${state.template}|v${state.blockVolume}|w${globalWeekIndex}|s${sessionIndex}|b${blockIndex}`;
   }
 
-  function countOccurrencesPerWeek(tpl, movementId, zoneKey){
+  function btsCountOccurrencesPerWeek(tpl, movementId, zoneKey){
     let n=0;
     for (const s of tpl.sessions){
       for (const b of s.blocks){
@@ -409,298 +668,559 @@
     return n;
   }
 
-  function weekZoneTarget(blockVolume, phasePct, zonePct){
+  function btsWeekZoneTarget(blockVolume, phasePct, zonePct){
     return Math.round(Number(blockVolume) * phasePct * zonePct);
   }
 
-  function computeAppliedReps(doneLadders, ladder, leftoverTotal, leftoverDone){
-    return (doneLadders|0)*ladder.volume + (leftoverDone ? (leftoverTotal|0) : 0);
-  }
-
-  function appliedThisWeek(tpl, globalWeekIndex, movementId, zoneKey){
+  function btsAppliedThisWeek(tpl, globalWeekIndex, movementId, zoneKey){
     let total=0;
     for (let sIdx=0; sIdx<tpl.sessions.length; sIdx++){
       const session = tpl.sessions[sIdx];
       session.blocks.forEach((blk, bi)=>{
         if (blk.movement!==movementId || blk.zone!==zoneKey) return;
-        const key = progressKey(globalWeekIndex, sIdx, bi);
-        const entry = state.progress[key];
+        const key = btsProgressKey(globalWeekIndex, sIdx, bi);
+        const entry = state.btsProgress[key];
         if (entry && typeof entry.appliedReps==="number") total += entry.appliedReps;
       });
     }
     return total;
   }
 
-  function applyDeltaToRemaining(mvId, zKey, delta){
-    const tgt = zoneTargets(state.blockVolume)[zKey];
-    const cur = state.remaining[mvId][zKey];
+  function btsEnsureEntry(globalWeekIndex, sessionIndex, blockIndex){
+    const key=btsProgressKey(globalWeekIndex, sessionIndex, blockIndex);
+    if (!state.btsProgress[key]){
+      state.btsProgress[key]={doneLadders:0,leftoverDone:false,appliedReps:0};
+    }
+    return state.btsProgress[key];
+  }
+
+  function btsComputeApplied(doneLadders, ladder, leftoverTotal, leftoverDone){
+    return (doneLadders|0)*ladder.volume + (leftoverDone ? (leftoverTotal|0) : 0);
+  }
+
+  function btsApplyDeltaToRemaining(mvId, zKey, delta){
+    const tgt = btsZoneTargets(state.blockVolume)[zKey];
+    const cur = state.btsRemaining[mvId][zKey];
     let next = cur - delta;
     next = Math.max(0, Math.min(tgt, next));
-    state.remaining[mvId][zKey] = next;
+    state.btsRemaining[mvId][zKey]=next;
   }
 
-  function ensureProgressEntry(globalWeekIndex, sessionIndex, blockIndex){
-    const key=progressKey(globalWeekIndex, sessionIndex, blockIndex);
-    if (!state.progress[key]){
-      state.progress[key] = {doneLadders:0, leftoverDone:false, appliedReps:0};
-    }
-    return state.progress[key];
-  }
+  function btsUpdate(globalWeekIndex, sessionIndex, blockIndex, mvId, zKey, ladder, planFull, leftoverTotal, newDone, newLeftDone){
+    const key=btsProgressKey(globalWeekIndex, sessionIndex, blockIndex);
+    const entry=state.btsProgress[key];
 
-  function updateProgressAndRemaining(globalWeekIndex, sessionIndex, blockIndex, mvId, zKey, ladder, planFullLadders, leftoverTotal, newDoneLadders, newLeftoverDone){
-    const key=progressKey(globalWeekIndex, sessionIndex, blockIndex);
-    const entry=state.progress[key];
-
-    newDoneLadders = Math.max(0, Math.min(planFullLadders, newDoneLadders|0));
-    newLeftoverDone = !!newLeftoverDone;
+    newDone = Math.max(0, Math.min(planFull, newDone|0));
+    newLeftDone = !!newLeftDone;
 
     const oldApplied = entry.appliedReps || 0;
-    const nextApplied = computeAppliedReps(newDoneLadders, ladder, leftoverTotal, newLeftoverDone);
+    const nextApplied = btsComputeApplied(newDone, ladder, leftoverTotal, newLeftDone);
     const delta = nextApplied - oldApplied;
 
-    if (delta > 0){
-      const remaining = state.remaining[mvId][zKey];
+    if (delta>0){
+      const remaining = state.btsRemaining[mvId][zKey];
       const allowed = Math.min(delta, remaining);
-      applyDeltaToRemaining(mvId, zKey, allowed);
+      btsApplyDeltaToRemaining(mvId, zKey, allowed);
       entry.appliedReps = oldApplied + allowed;
-    } else if (delta < 0){
-      applyDeltaToRemaining(mvId, zKey, delta); // negative adds back
+    } else if (delta<0){
+      btsApplyDeltaToRemaining(mvId, zKey, delta); // negative adds back
       entry.appliedReps = nextApplied;
     }
 
-    entry.doneLadders = newDoneLadders;
-    entry.leftoverDone = newLeftoverDone;
+    entry.doneLadders = newDone;
+    entry.leftoverDone = newLeftDone;
     saveState();
   }
 
-  function blockDonePct(){
-    const tpl=TEMPLATES[state.template];
-    let total=0, rem=0;
-    const tgt=zoneTargets(state.blockVolume);
-    for (const mv of tpl.movements){
-      for (const z of ZONES){
-        total += tgt[z.key];
-        rem   += state.remaining[mv.id][z.key];
-      }
+  // ===== PS remaining/progress =====
+  function ensurePSRemaining(st){
+    st.psRemaining = st.psRemaining || {};
+    // each lift gets blockVolume reps across 4-week wave
+    for (const lid of ["squat","hinge","push","pull"]){
+      if (typeof st.psRemaining[lid] !== "number") st.psRemaining[lid] = Number(st.blockVolume)||300;
     }
-    const done = total - rem;
-    return total>0 ? Math.round((done/total)*100) : 0;
   }
 
-  function renderKPI(phase){
+  function psKey(globalWeekIndex, sessionIndex, liftId){
+    return `${state.template}|v${state.blockVolume}|w${globalWeekIndex}|s${sessionIndex}|lift${liftId}`;
+  }
+
+  function psEnsureEntry(globalWeekIndex, sessionIndex, liftId){
+    const key=psKey(globalWeekIndex, sessionIndex, liftId);
+    if (!state.psProgress[key]){
+      state.psProgress[key]={laddersDone:0, appliedReps:0};
+    }
+    return state.psProgress[key];
+  }
+
+  function psUpdate(globalWeekIndex, sessionIndex, liftId, repsPerLadder, newDone){
+    const tpl=TEMPLATES[state.template];
+    const ladders=tpl.ladders;
+    newDone = Math.max(0, Math.min(ladders, newDone|0));
+
+    const key=psKey(globalWeekIndex, sessionIndex, liftId);
+    const entry=state.psProgress[key];
+
+    const oldApplied = entry.appliedReps || 0;
+    const nextApplied = repsPerLadder.slice(0,newDone).reduce((a,b)=>a+b,0);
+    let delta = nextApplied - oldApplied;
+
+    if (delta>0){
+      const remaining = state.psRemaining[liftId];
+      const allowed = Math.min(delta, remaining);
+      state.psRemaining[liftId] = Math.max(0, remaining - allowed);
+      entry.appliedReps = oldApplied + allowed;
+
+      // If we couldn't apply full delta due to remaining, clamp laddersDone down
+      if (allowed < delta){
+        // find max ladders we can afford
+        let can=0, acc=0;
+        for (let i=0;i<repsPerLadder.length;i++){
+          if (acc + repsPerLadder[i] <= remaining){ acc += repsPerLadder[i]; can++; }
+          else break;
+        }
+        entry.laddersDone = can;
+        entry.appliedReps = oldApplied + acc;
+        saveState();
+        return;
+      }
+    } else if (delta<0){
+      // add back
+      state.psRemaining[liftId] = Math.min(state.blockVolume, state.psRemaining[liftId] + (-delta));
+      entry.appliedReps = nextApplied;
+    }
+
+    entry.laddersDone = newDone;
+    saveState();
+  }
+
+  // ===== UI helpers =====
+  function blockDonePct(){
+    const tpl=TEMPLATES[state.template];
+    if (tpl.type==="BTS"){
+      const targets=btsZoneTargets(state.blockVolume);
+      let total=0, rem=0;
+      for (const mv of tpl.movements){
+        for (const z of BTS_ZONES){
+          total += targets[z.key];
+          rem += state.btsRemaining[mv.id][z.key];
+        }
+      }
+      const done = total - rem;
+      return total>0 ? Math.round((done/total)*100) : 0;
+    } else {
+      // PS: total block reps = blockVolume * 4 lifts
+      const total = state.blockVolume * 4;
+      const rem = ["squat","hinge","push","pull"].reduce((a,k)=>a+(state.psRemaining[k]||0),0);
+      const done = total - rem;
+      return total>0 ? Math.round((done/total)*100) : 0;
+    }
+  }
+
+  function setRulesText(){
+    const tpl=TEMPLATES[state.template];
+    const el=$("#rulesText");
+    if (tpl.type==="BTS"){
+      el.innerHTML = `
+        Week-wave: <b>15–28–22–35</b> (Deload / Development / Maintenance / Stress)<br/>
+        Zone split (per week): <b>15% Heavy</b> / <b>35% Medium</b> / <b>50% Light</b><br/>
+        Ladder: <b>C = floor(0.66 × RM)</b>, choose <b>a+b=C</b>, enforce <b>delta20</b> between a and b.<br/>
+        Leftover is hidden; you tick <b>+L</b> to finish it.
+      `;
+    } else {
+      const isA = state.template==="PSA";
+      el.innerHTML = `
+        Week-wave: <b>15–28–22–35</b><br/>
+        Sessions/week: <b>3</b> • Each week each lift gets <b>15%</b>, <b>35%</b>, <b>50%</b> once.<br/>
+        Intensities every session via ladders (order always <b>L → M → H${isA ? " → SH":""}</b>).<br/>
+        ${isA
+          ? `PS-A split: <b>SH 5%</b> (cap 1 rep per ladder), <b>H 12%</b>, <b>M 34%</b>, <b>L 49%</b> • Ladders/lift: <b>4</b><br/>`
+          : `PS4 split: <b>L 50%</b>, <b>M 35%</b>, <b>H 15%</b> • Ladders/lift: <b>3</b><br/>`}
+        Rep-ranges (anchors): L <b>${PS_RANGES.L}</b> • M <b>${PS_RANGES.M}</b> • H <b>${PS_RANGES.H}</b>${isA ? ` • SH <b>${PS_RANGES.SH}</b>`:""}
+      `;
+    }
+  }
+
+  // ===== Rendering =====
+  function renderKPI(phaseName){
     const tpl=TEMPLATES[state.template];
     $("#kpi").innerHTML = [
       `<span class="pill">Template <b>${tpl.name}</b></span>`,
       `<span class="pill">Block <b>${state.blockVolume}</b></span>`,
-      `<span class="pill">Week <b>${phase.name}</b></span>`,
+      `<span class="pill">Week <b>${phaseName}</b></span>`,
       `<span class="pill">Progress <b>${blockDonePct()}%</b></span>`
     ].join("");
   }
 
   function renderPlanner(){
-    ensureRemaining(state);
-    const tpl = TEMPLATES[state.template];
+    const tpl=TEMPLATES[state.template];
+    setRulesText();
 
-    const sPerWeek = tpl.sessions.length;
+    const wrap=$("#planWrap");
+    wrap.innerHTML="";
+
+    // compute week/session
+    const sessionsPerWeek = tpl.type==="BTS" ? tpl.sessions.length : tpl.sessions.length;
     const cursor = state.sessionCursor|0;
-
-    const globalWeekIndex = Math.floor(cursor / sPerWeek);
+    const globalWeekIndex = Math.floor(cursor / sessionsPerWeek);
     const week = globalWeekIndex + 1;
-
     const phase = WEEK_WAVE[mod(globalWeekIndex, WEEK_WAVE.length)];
-    const sessionIdx = mod(cursor, sPerWeek);
-    const session = tpl.sessions[sessionIdx];
+    const sessionIdx = mod(cursor, sessionsPerWeek);
 
     $("#headTitle").textContent = `Week ${week} • Session ${sessionIdx+1}`;
-    $("#headSub").textContent = `${tpl.name} • ${session.title} • ${phase.name}`;
+    $("#headSub").textContent = `${tpl.name} • ${tpl.type==="BTS" ? tpl.sessions[sessionIdx].title : tpl.sessions[sessionIdx].title} • ${phase.name}`;
+    renderKPI(phase.name);
 
-    renderKPI(phase);
+    if (tpl.type==="BTS"){
+      ensureBTSRemaining(state);
 
-    const wrap = $("#planWrap");
-    wrap.innerHTML = "";
+      const session = tpl.sessions[sessionIdx];
+      const byZone = {H:[],M:[],L:[]};
+      session.blocks.forEach((b,i)=>byZone[b.zone].push({blk:b, idx:i}));
 
-    // group by zone so you have clear "lines" between H/M/L
-    const byZone = {H:[],M:[],L:[]};
-    session.blocks.forEach((b,i)=>byZone[b.zone].push({blk:b, idx:i}));
+      for (const zKey of ["H","M","L"]){
+        const zMeta = BTS_ZONES.find(z=>z.key===zKey);
 
-    for (const zKey of ["H","M","L"]){
-      const zMeta = ZONES.find(z=>z.key===zKey);
+        const zoneDiv=document.createElement("div");
+        zoneDiv.className="zone";
+        zoneDiv.innerHTML = `<div class="zoneTitle"><b>${zMeta.name}</b><span>${zMeta.range}</span></div>`;
 
-      const zoneDiv = document.createElement("div");
-      zoneDiv.className = "zone";
-      zoneDiv.innerHTML = `<div class="zoneTitle"><b>${zMeta.name}</b><span>${zMeta.range}</span></div>`;
+        for (const {blk, idx} of byZone[zKey]){
+          const mvId=blk.movement;
+          const spec = state.btsStacks[mvId][zKey];
+          const ladder = buildBTSLadder(spec.repMax);
 
-      for (const {blk, idx} of byZone[zKey]){
-        const mvId = blk.movement;
-        const spec = state.stacks[mvId][zKey];
-        const ladder = buildLadder(spec.repMax);
+          // budgets
+          const remainingBlock = Math.max(0, state.btsRemaining[mvId][zKey]);
+          const weekTarget = btsWeekZoneTarget(state.blockVolume, phase.pct, zMeta.pct);
+          const occ = Math.max(1, btsCountOccurrencesPerWeek(tpl, mvId, zKey));
+          const perExposure = Math.max(1, Math.ceil(weekTarget / occ));
+          const used = btsAppliedThisWeek(tpl, globalWeekIndex, mvId, zKey);
+          const weekRemaining = Math.max(0, weekTarget - used);
 
-        const remainingBlock = Math.max(0, state.remaining[mvId][zKey]);
+          const targetToday = Math.min(remainingBlock, weekRemaining, perExposure);
+          const plan = planBTS(targetToday, ladder);
 
-        const weekTarget = weekZoneTarget(state.blockVolume, phase.pct, zMeta.pct);
-        const occ = Math.max(1, countOccurrencesPerWeek(tpl, mvId, zKey));
-        const basePerExposure = Math.max(1, Math.ceil(weekTarget / occ));
+          const entry = btsEnsureEntry(globalWeekIndex, sessionIdx, idx);
+          entry.doneLadders = Math.min(entry.doneLadders||0, plan.fullLadders);
+          if (!plan.leftoverTotal) entry.leftoverDone = false;
 
-        const used = appliedThisWeek(tpl, globalWeekIndex, mvId, zKey);
-        const weekRemaining = Math.max(0, weekTarget - used);
+          const title = `${(tpl.movements.find(m=>m.id===mvId)?.label||mvId)}: ${spec.exercise || "—"}`;
+          const ladderText = `${ladder.a}-${ladder.b}-${ladder.C} × ${plan.fullLadders}`;
+          const leftoverText = plan.leftoverTotal ? ` + leftover ${plan.leftoverTotal}` : "";
 
-        const targetToday = Math.min(remainingBlock, weekRemaining, basePerExposure);
-        const plan = planForTarget(targetToday, ladder);
+          const item=document.createElement("div");
+          item.className="item";
+          item.innerHTML = `
+            <div class="itemTop">
+              <div class="name">
+                ${esc(title)}
+                <span class="sub muted">${esc(spec.load || "")}</span>
+              </div>
+            </div>
+            <div class="line">
+              <div class="mono">${esc(ladderText + leftoverText)}</div>
+              <div class="ctrl">
+                <button class="cbtn" data-dec>−</button>
+                <span class="cval">${entry.doneLadders||0}/${plan.fullLadders}</span>
+                <button class="cbtn" data-inc>+</button>
+                ${plan.leftoverTotal ? `<button class="ltog ${entry.leftoverDone?'done':''}" data-ltog>+L</button>` : ``}
+              </div>
+            </div>
+          `;
+          zoneDiv.appendChild(item);
 
-        const entry = ensureProgressEntry(globalWeekIndex, sessionIdx, idx);
+          item.querySelector("[data-inc]").onclick = () => {
+            const next = Math.min(plan.fullLadders, (entry.doneLadders||0)+1);
+            btsUpdate(globalWeekIndex, sessionIdx, idx, mvId, zKey, ladder, plan.fullLadders, plan.leftoverTotal, next, entry.leftoverDone);
+            renderPlanner();
+          };
+          item.querySelector("[data-dec]").onclick = () => {
+            const next = Math.max(0, (entry.doneLadders||0)-1);
+            btsUpdate(globalWeekIndex, sessionIdx, idx, mvId, zKey, ladder, plan.fullLadders, plan.leftoverTotal, next, entry.leftoverDone);
+            renderPlanner();
+          };
+          const lt=item.querySelector("[data-ltog]");
+          if (lt){
+            lt.onclick = () => {
+              const next=!entry.leftoverDone;
+              btsUpdate(globalWeekIndex, sessionIdx, idx, mvId, zKey, ladder, plan.fullLadders, plan.leftoverTotal, entry.doneLadders||0, next);
+              renderPlanner();
+            };
+          }
+        }
+        wrap.appendChild(zoneDiv);
+      }
+      saveState();
+      return;
+    }
 
-        // clamp if plan changed
-        entry.doneLadders = Math.min(entry.doneLadders||0, plan.fullLadders);
-        if (!plan.leftoverTotal) entry.leftoverDone = false;
+    // ===== PlanStrong planner =====
+    ensurePSRemaining(state);
 
-        const title = `${movementLabel(mvId)}: ${spec.exercise || "—"}`;
-        const ladderText = `${ladder.a}-${ladder.b}-${ladder.C} × ${plan.fullLadders}`;
-        const leftoverText = plan.leftoverTotal ? ` + leftover ${plan.leftoverTotal}` : "";
+    const psSession = tpl.sessions[sessionIdx];
+    const weekPerLift = Math.round(state.blockVolume * phase.pct); // e.g. 300*0.15=45
+    const posMap = splitWeekIntoSessions(weekPerLift);            // {P15,P35,P50} integers
 
-        const item = document.createElement("div");
-        item.className = "item";
+    // Render each slot in order (15/35/50 positions)
+    psSession.slots.forEach((slot, slotIdx)=>{
+      const pos = PS_SESSION_POS.find(p=>p.key===slot.pos);
+      const sessionRepsForThatLift = posMap[slot.pos];
+
+      const zoneDiv=document.createElement("div");
+      zoneDiv.className="zone";
+      zoneDiv.innerHTML = `<div class="zoneTitle"><b>${pos.name} (${Math.round(pos.pct*100)}%)</b><span>Target reps: ${sessionRepsForThatLift}</span></div>`;
+
+      // expand Upper into push/pull
+      const liftsToRender = (slot.lift==="upper") ? ["push","pull"] : [slot.lift];
+
+      liftsToRender.forEach(liftId=>{
+        const stack = state.psStacks[liftId] || {exercise:"",loadL:"",loadM:"",loadH:"",loadSH:""};
+        const title = `${(tpl.lifts.find(x=>x.id===liftId)?.label||liftId)}: ${stack.exercise || "—"}`;
+
+        // Cap by remaining (block level) — if remaining is low, clamp sessionReps
+        const remaining = state.psRemaining[liftId] ?? state.blockVolume;
+        const sessionReps = Math.min(sessionRepsForThatLift, remaining);
+
+        const plan = planPSLift(sessionReps, state.template); // lines + repsPerLadder
+        const entry = psEnsureEntry(globalWeekIndex, sessionIdx, liftId);
+        const laddersTotal = tpl.ladders;
+        entry.laddersDone = Math.min(entry.laddersDone||0, laddersTotal);
+
+        // Loads shown as compact label
+        const loadLine = (state.template==="PSA")
+          ? `L(${PS_RANGES.L}): ${stack.loadL||"—"} • M(${PS_RANGES.M}): ${stack.loadM||"—"} • H(${PS_RANGES.H}): ${stack.loadH||"—"} • SH(${PS_RANGES.SH}): ${stack.loadSH||"—"}`
+          : `L(${PS_RANGES.L}): ${stack.loadL||"—"} • M(${PS_RANGES.M}): ${stack.loadM||"—"} • H(${PS_RANGES.H}): ${stack.loadH||"—"}`;
+
+        // Ladder lines compact
+        const ladderText = plan.lines.map((ln,i)=>`${i+1}) ${ln}`).join("  |  ");
+
+        const item=document.createElement("div");
+        item.className="item";
         item.innerHTML = `
           <div class="itemTop">
             <div class="name">
               ${esc(title)}
-              <span class="sub muted">${esc(spec.load || "")}</span>
+              <span class="sub muted">${esc(loadLine)}</span>
             </div>
           </div>
           <div class="line">
-            <div class="mono">${esc(ladderText + leftoverText)}</div>
+            <div class="mono">${esc(ladderText)}</div>
             <div class="ctrl">
               <button class="cbtn" data-dec>−</button>
-              <span class="cval">${entry.doneLadders||0}/${plan.fullLadders}</span>
+              <span class="cval">${entry.laddersDone||0}/${laddersTotal}</span>
               <button class="cbtn" data-inc>+</button>
-              ${plan.leftoverTotal ? `<button class="ltog ${entry.leftoverDone?'done':''}" data-ltog>+L</button>` : ``}
             </div>
           </div>
         `;
         zoneDiv.appendChild(item);
 
         item.querySelector("[data-inc]").onclick = () => {
-          const next = Math.min(plan.fullLadders, (entry.doneLadders||0)+1);
-          updateProgressAndRemaining(globalWeekIndex, sessionIdx, idx, mvId, zKey, ladder, plan.fullLadders, plan.leftoverTotal, next, entry.leftoverDone);
+          const next = Math.min(laddersTotal, (entry.laddersDone||0)+1);
+          psUpdate(globalWeekIndex, sessionIdx, liftId, plan.repsPerLadder, next);
           renderPlanner();
         };
         item.querySelector("[data-dec]").onclick = () => {
-          const next = Math.max(0, (entry.doneLadders||0)-1);
-          updateProgressAndRemaining(globalWeekIndex, sessionIdx, idx, mvId, zKey, ladder, plan.fullLadders, plan.leftoverTotal, next, entry.leftoverDone);
+          const next = Math.max(0, (entry.laddersDone||0)-1);
+          psUpdate(globalWeekIndex, sessionIdx, liftId, plan.repsPerLadder, next);
           renderPlanner();
         };
-        const lt = item.querySelector("[data-ltog]");
-        if (lt){
-          lt.onclick = () => {
-            const next = !entry.leftoverDone;
-            updateProgressAndRemaining(globalWeekIndex, sessionIdx, idx, mvId, zKey, ladder, plan.fullLadders, plan.leftoverTotal, entry.doneLadders||0, next);
-            renderPlanner();
-          };
-        }
-      }
+      });
 
       wrap.appendChild(zoneDiv);
-    }
+    });
 
     saveState();
   }
 
   function renderCustom(){
     const tpl=TEMPLATES[state.template];
-    $("#customHint").textContent = `Template ${tpl.name}: ${tpl.movements.length} movements × 3 zones = ${tpl.movements.length*3} slots.`;
-
     const wrap=$("#customWrap");
     wrap.innerHTML="";
 
-    for (const mv of tpl.movements){
+    if (tpl.type==="BTS"){
+      $("#customHint").textContent = `BTS template: ${tpl.movements.length} movements × 3 zones = ${tpl.movements.length*3} slots.`;
+
+      for (const mv of tpl.movements){
+        const card=document.createElement("div");
+        card.className="card setupCard";
+        card.innerHTML = `<h3>${esc(mv.label)}</h3>`;
+
+        for (const z of BTS_ZONES){
+          const spec = state.btsStacks[mv.id][z.key];
+          const ladder = buildBTSLadder(spec.repMax);
+
+          const row=document.createElement("div");
+          row.className="setupRow";
+          row.innerHTML = `
+            <div class="pill">${z.key} — ${z.name} (${z.range})</div>
+            <input type="text" data-k="ex" placeholder="Exercise name" value="${esc(spec.exercise||"")}">
+            <input type="text" data-k="load" placeholder="Load (e.g. 24 kg / BW)" value="${esc(spec.load||"")}">
+            <input type="number" min="1" step="1" data-k="rm" value="${Number(spec.repMax||10)}">
+            <div class="muted mono">${ladder.a}-${ladder.b}-${ladder.C}</div>
+          `;
+          const ex=row.querySelector('input[data-k="ex"]');
+          const ld=row.querySelector('input[data-k="load"]');
+          const rm=row.querySelector('input[data-k="rm"]');
+          ex.addEventListener("input",()=>{spec.exercise=ex.value; saveState(); renderPlanner();});
+          ld.addEventListener("input",()=>{spec.load=ld.value; saveState(); renderPlanner();});
+          rm.addEventListener("input",()=>{spec.repMax=Math.max(1,Number(rm.value)||1); saveState(); renderCustom(); renderPlanner();});
+          card.appendChild(row);
+        }
+        wrap.appendChild(card);
+      }
+      return;
+    }
+
+    // PS custom
+    const isA = state.template==="PSA";
+    $("#customHint").innerHTML = `PlanStrong: choose <b>4 lifts</b>. Anchors: L <b>${PS_RANGES.L}</b> • M <b>${PS_RANGES.M}</b> • H <b>${PS_RANGES.H}</b>${isA?` • SH <b>${PS_RANGES.SH}</b>`:""}.`;
+
+    const lifts = TEMPLATES[state.template].lifts;
+    for (const lf of lifts){
+      const s = state.psStacks[lf.id];
+
       const card=document.createElement("div");
       card.className="card setupCard";
-      card.innerHTML = `<h3>${esc(mv.label)}</h3>`;
+      card.innerHTML = `<h3>${esc(lf.label)}</h3>`;
 
-      for (const z of ZONES){
-        const spec = state.stacks[mv.id][z.key];
-        const ladder = buildLadder(spec.repMax);
+      const row=document.createElement("div");
+      row.className="setupRowPS";
+      row.innerHTML = `
+        <div class="pill">Exercise</div>
+        <input type="text" data-k="ex" placeholder="${lf.label} exercise" value="${esc(s.exercise||"")}">
+        <input type="text" data-k="L"  placeholder="Load L (${PS_RANGES.L})" value="${esc(s.loadL||"")}">
+        <input type="text" data-k="M"  placeholder="Load M (${PS_RANGES.M})" value="${esc(s.loadM||"")}">
+        <input type="text" data-k="H"  placeholder="Load H (${PS_RANGES.H})" value="${esc(s.loadH||"")}">
+      `;
+      card.appendChild(row);
 
-        const row=document.createElement("div");
-        row.className="setupRow";
-        row.innerHTML = `
-          <div class="pill">${z.key} — ${z.name} (${z.range})</div>
-          <input type="text" data-k="ex" placeholder="Exercise name" value="${esc(spec.exercise||"")}">
-          <input type="text" data-k="load" placeholder="Load (e.g. 24 kg / BW)" value="${esc(spec.load||"")}">
-          <input type="number" min="1" step="1" data-k="rm" value="${Number(spec.repMax||10)}">
-          <div class="muted mono">${ladder.a}-${ladder.b}-${ladder.C}</div>
+      if (isA){
+        const row2=document.createElement("div");
+        row2.className="setupRowPS";
+        row2.innerHTML = `
+          <div class="pill">SH</div>
+          <div class="muted" style="padding:10px 0">Super Heavy (cap 1 rep per ladder)</div>
+          <input type="text" data-k="SH" placeholder="Load SH (${PS_RANGES.SH})" value="${esc(s.loadSH||"")}">
+          <div></div><div></div>
         `;
+        card.appendChild(row2);
+      }
 
-        const ex=row.querySelector('input[data-k="ex"]');
-        const ld=row.querySelector('input[data-k="load"]');
-        const rm=row.querySelector('input[data-k="rm"]');
+      // wire
+      const ex=row.querySelector('input[data-k="ex"]');
+      const l=row.querySelector('input[data-k="L"]');
+      const m=row.querySelector('input[data-k="M"]');
+      const h=row.querySelector('input[data-k="H"]');
+      ex.addEventListener("input",()=>{s.exercise=ex.value; saveState(); renderPlanner();});
+      l.addEventListener("input",()=>{s.loadL=l.value; saveState(); renderPlanner();});
+      m.addEventListener("input",()=>{s.loadM=m.value; saveState(); renderPlanner();});
+      h.addEventListener("input",()=>{s.loadH=h.value; saveState(); renderPlanner();});
 
-        ex.addEventListener("input",()=>{spec.exercise=ex.value; saveState(); renderPlanner();});
-        ld.addEventListener("input",()=>{spec.load=ld.value; saveState(); renderPlanner();});
-        rm.addEventListener("input",()=>{spec.repMax=Math.max(1,Number(rm.value)||1); saveState(); renderCustom(); renderPlanner();});
-
-        card.appendChild(row);
+      if (isA){
+        const sh=card.querySelector('input[data-k="SH"]');
+        sh.addEventListener("input",()=>{s.loadSH=sh.value; saveState(); renderPlanner();});
       }
 
       wrap.appendChild(card);
     }
   }
 
+  // ===== Actions =====
   function resetThisSession(){
     const tpl=TEMPLATES[state.template];
-    const sPerWeek = tpl.sessions.length;
-    const cursor = state.sessionCursor|0;
-    const globalWeekIndex = Math.floor(cursor / sPerWeek);
-    const sIdx = mod(cursor, sPerWeek);
-    const session = tpl.sessions[sIdx];
+    const sessionsPerWeek = tpl.sessions.length;
+    const cursor=state.sessionCursor|0;
+    const globalWeekIndex=Math.floor(cursor/sessionsPerWeek);
+    const sessionIdx=mod(cursor, sessionsPerWeek);
 
-    session.blocks.forEach((blk, bi)=>{
-      const key = progressKey(globalWeekIndex, sIdx, bi);
-      const entry = state.progress[key];
-      if (!entry) return;
-      applyDeltaToRemaining(blk.movement, blk.zone, -(entry.appliedReps||0));
-      delete state.progress[key];
-    });
+    if (tpl.type==="BTS"){
+      const session=tpl.sessions[sessionIdx];
+      session.blocks.forEach((blk, bi)=>{
+        const key=btsProgressKey(globalWeekIndex, sessionIdx, bi);
+        const entry=state.btsProgress[key];
+        if (!entry) return;
+        btsApplyDeltaToRemaining(blk.movement, blk.zone, -(entry.appliedReps||0));
+        delete state.btsProgress[key];
+      });
+    } else {
+      // PS: reset ladders for lifts in this session
+      const session=tpl.sessions[sessionIdx];
+      const liftIds=[];
+      session.slots.forEach(slot=>{
+        if (slot.lift==="upper") liftIds.push("push","pull");
+        else liftIds.push(slot.lift);
+      });
+      for (const liftId of liftIds){
+        const key=psKey(globalWeekIndex, sessionIdx, liftId);
+        const entry=state.psProgress[key];
+        if (!entry) continue;
+        // add back applied reps to remaining
+        state.psRemaining[liftId] = Math.min(state.blockVolume, (state.psRemaining[liftId]||0) + (entry.appliedReps||0));
+        delete state.psProgress[key];
+      }
+    }
     saveState();
   }
 
   function clearAll(){
-    state.progress = {};
-    state.remaining = {};
-    ensureRemaining(state);
+    const tpl=TEMPLATES[state.template];
+    if (tpl.type==="BTS"){
+      state.btsProgress={};
+      state.btsRemaining={};
+      ensureBTSRemaining(state);
+    } else {
+      state.psProgress={};
+      state.psRemaining={};
+      ensurePSRemaining(state);
+    }
     saveState();
   }
 
   function newBlock(){
-    state.progress = {};
-    state.remaining = {};
-    state.sessionCursor = 0;
-    ensureRemaining(state);
+    // clear progress + remaining and reset cursor
+    state.sessionCursor=0;
+    const tpl=TEMPLATES[state.template];
+    if (tpl.type==="BTS"){
+      state.btsProgress={};
+      state.btsRemaining={};
+      ensureBTSRemaining(state);
+    } else {
+      state.psProgress={};
+      state.psRemaining={};
+      ensurePSRemaining(state);
+    }
     saveState();
   }
 
   function applyTemplateAndVolume(templateKey, volume){
     const changed = templateKey !== state.template;
-
     state.template = templateKey;
     state.blockVolume = Number(volume)||300;
+    state.sessionCursor = 0;
 
-    if (changed){
-      state.sessionCursor = 0;
-      state.stacks = buildDefaultStacks(templateKey);
+    const tpl=TEMPLATES[state.template];
+
+    if (tpl.type==="BTS"){
+      // build stacks for this BTS template if needed
+      state.btsStacks = buildDefaultStacksBTS(state.template);
+      state.btsProgress = {};
+      state.btsRemaining = {};
+      ensureBTSRemaining(state);
+    } else {
+      // keep PS stacks; reset progress/remaining for new block volume
+      state.psProgress = {};
+      state.psRemaining = {};
+      ensurePSRemaining(state);
     }
 
-    state.progress = {};
-    state.remaining = {};
-    ensureRemaining(state);
-
     saveState();
-    $("#selTemplate").value = state.template;
-    $("#selVol").value = String(state.blockVolume);
+    setRulesText();
     renderCustom();
     renderPlanner();
   }
 
-  // Tabs
+  // ===== Tabs =====
   document.querySelectorAll(".tab").forEach(btn=>{
     btn.addEventListener("click",()=>{
       const t = btn.dataset.tab;
@@ -709,7 +1229,7 @@
     });
   });
 
-  // Controls wiring
+  // ===== Wire UI =====
   $("#selTemplate").value = state.template;
   $("#selVol").value = String(state.blockVolume);
 
@@ -726,14 +1246,19 @@
   $("#btnSaveCustom").onclick = ()=>{ saveState(); alert("Saved."); };
   $("#btnResetCustom").onclick = ()=>{
     if (!confirm("Reset custom exercises for this template?")) return;
-    state.stacks = buildDefaultStacks(state.template);
+    const tpl=TEMPLATES[state.template];
+    if (tpl.type==="BTS"){
+      state.btsStacks = buildDefaultStacksBTS(state.template);
+    } else {
+      state.psStacks = buildDefaultStacksPS();
+    }
     saveState();
     renderCustom();
     renderPlanner();
   };
 
-  // init
-  ensureRemaining(state);
+  // ===== init =====
+  setRulesText();
   renderCustom();
   renderPlanner();
 })();
