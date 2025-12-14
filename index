@@ -1,0 +1,280 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>BuildStrong — Unity Style</title>
+
+<style>
+:root { color-scheme: dark; }
+body {
+  margin: 0;
+  font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial;
+  background: #0b1220;
+  color: #e6eaf2;
+}
+.app {
+  max-width: 980px;
+  margin: 0 auto;
+  padding: 16px 12px 96px;
+}
+h1 { margin: 0 0 6px; font-size: 26px; }
+h2 { margin: 0; font-size: 18px; }
+.muted { opacity: .7; font-size: 12px; }
+
+.tabs {
+  display: flex;
+  gap: 8px;
+  margin: 10px 0 12px;
+}
+.tab {
+  flex: 1;
+  padding: 12px;
+  border-radius: 12px;
+  border: 1px solid rgba(255,255,255,.15);
+  background: #101a30;
+  color: #fff;
+  font-weight: 800;
+}
+.tab.active {
+  background: #2b63ff;
+  border-color: #2b63ff;
+}
+
+.card {
+  background: #101a30;
+  border: 1px solid rgba(255,255,255,.08);
+  border-radius: 14px;
+  padding: 14px;
+  margin-bottom: 12px;
+}
+
+.zone {
+  margin-top: 12px;
+}
+.zone h3 {
+  margin: 10px 0 6px;
+  font-size: 15px;
+  border-top: 1px solid rgba(255,255,255,.12);
+  padding-top: 8px;
+}
+
+.item {
+  background: #0e182c;
+  border: 1px solid rgba(255,255,255,.1);
+  border-radius: 12px;
+  padding: 10px;
+  margin: 8px 0;
+}
+.item-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+}
+.item-title { font-weight: 900; }
+.item-sub { font-size: 12px; opacity: .8; }
+
+.controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 6px;
+}
+.ctrl-btn {
+  padding: 6px 10px;
+  border-radius: 10px;
+  border: 1px solid rgba(255,255,255,.2);
+  background: #0f1a34;
+  color: #fff;
+  font-weight: 900;
+}
+.ctrl-val {
+  min-width: 72px;
+  text-align: center;
+  font-weight: 900;
+}
+
+select {
+  width: 100%;
+  padding: 10px;
+  border-radius: 10px;
+  background: #0f1a34;
+  border: 1px solid rgba(255,255,255,.2);
+  color: #fff;
+}
+label { font-size: 12px; opacity: .8; }
+</style>
+</head>
+
+<body>
+<div class="app">
+  <h1>BuildStrong</h1>
+  <div class="muted" id="subtitle"></div>
+
+  <div class="tabs">
+    <button class="tab active" onclick="showTab('plan')">Planner</button>
+    <button class="tab" onclick="showTab('setup')">Setup</button>
+  </div>
+
+  <!-- PLANNER -->
+  <div id="planTab">
+    <div class="card">
+      <h2 id="sessionTitle"></h2>
+      <div class="muted" id="sessionMeta"></div>
+      <div id="planner"></div>
+    </div>
+
+    <div class="card">
+      <button class="ctrl-btn" onclick="prevSession()">◀ Prev</button>
+      <button class="ctrl-btn" onclick="nextSession()">Next ▶</button>
+    </div>
+  </div>
+
+  <!-- SETUP -->
+  <div id="setupTab" style="display:none">
+    <div class="card">
+      <label>Template</label>
+      <select id="templateSelect" onchange="resetProgram()">
+        <option value="BTS3">BTS3</option>
+        <option value="BTS4">BTS4</option>
+        <option value="BTS6">BTS6</option>
+      </select>
+
+      <label style="margin-top:10px">Block volume</label>
+      <select id="blockSelect" onchange="resetProgram()">
+        <option>200</option>
+        <option>240</option>
+        <option selected>300</option>
+        <option>360</option>
+        <option>420</option>
+      </select>
+    </div>
+  </div>
+</div>
+
+<script>
+/* =====================
+   CORE CONFIG
+===================== */
+const WEEK_WAVE = [
+  { pct:0.15, name:"Deload" },
+  { pct:0.28, name:"Development" },
+  { pct:0.22, name:"Maintenance" },
+  { pct:0.35, name:"Stress" }
+];
+
+const ZONES = [
+  { key:"H", name:"Heavy", pct:0.15 },
+  { key:"M", name:"Medium", pct:0.35 },
+  { key:"L", name:"Light", pct:0.50 }
+];
+
+const TEMPLATES = {
+  BTS3:["Push","Pull","Lower"],
+  BTS4:["Squat","Upper","Hinge"],
+  BTS6:["Upper A","Lower A","Upper B","Lower B"]
+};
+
+let state = JSON.parse(localStorage.getItem("BS_STATE")) || {
+  template:"BTS6",
+  block:300,
+  session:0,
+  progress:{}
+};
+
+/* =====================
+   HELPERS
+===================== */
+function save(){ localStorage.setItem("BS_STATE",JSON.stringify(state)); }
+
+function ladderForRM(rm){
+  const C = Math.max(1,Math.floor(rm*0.66));
+  const a = Math.max(1,Math.floor(C/3));
+  const b = C - a;
+  return {a,b,C,vol:a+b+C};
+}
+
+/* =====================
+   PLANNER RENDER
+===================== */
+function render(){
+  document.getElementById("templateSelect").value = state.template;
+  document.getElementById("blockSelect").value = state.block;
+
+  const sessions = TEMPLATES[state.template];
+  const week = Math.floor(state.session / sessions.length);
+  const wave = WEEK_WAVE[week % 4];
+
+  document.getElementById("subtitle").textContent =
+    `Block ${state.block} • ${wave.name}`;
+
+  document.getElementById("sessionTitle").textContent =
+    `Week ${week+1} • Session ${(state.session % sessions.length)+1}`;
+
+  document.getElementById("sessionMeta").textContent =
+    sessions[state.session % sessions.length];
+
+  const planner = document.getElementById("planner");
+  planner.innerHTML = "";
+
+  ZONES.forEach(z=>{
+    const zoneDiv = document.createElement("div");
+    zoneDiv.className="zone";
+    zoneDiv.innerHTML = `<h3>${z.name}</h3>`;
+
+    const target = Math.round(state.block * wave.pct * z.pct);
+    const key = `${week}-${state.session}-${z.key}`;
+    const done = state.progress[key] || 0;
+
+    const ladder = ladderForRM(10);
+    const ladders = Math.floor(target / ladder.vol);
+
+    zoneDiv.innerHTML += `
+      <div class="item">
+        <div class="item-head">
+          <div>
+            <div class="item-title">${z.name} work</div>
+            <div class="item-sub">${ladder.a}-${ladder.b}-${ladder.C}</div>
+          </div>
+        </div>
+        <div class="controls">
+          <button class="ctrl-btn" onclick="change('${key}',-1)">−</button>
+          <div class="ctrl-val">${done} / ${ladders}</div>
+          <button class="ctrl-btn" onclick="change('${key}',1)">+</button>
+        </div>
+      </div>
+    `;
+    planner.appendChild(zoneDiv);
+  });
+
+  save();
+}
+
+function change(key,delta){
+  state.progress[key] = Math.max(0,(state.progress[key]||0)+delta);
+  render();
+}
+
+/* =====================
+   NAV
+===================== */
+function nextSession(){ state.session++; render(); }
+function prevSession(){ state.session=Math.max(0,state.session-1); render(); }
+function resetProgram(){
+  state.template=document.getElementById("templateSelect").value;
+  state.block=parseInt(document.getElementById("blockSelect").value);
+  state.session=0;
+  state.progress={};
+  render();
+}
+function showTab(t){
+  document.getElementById("planTab").style.display = t==="plan"?"block":"none";
+  document.getElementById("setupTab").style.display = t==="setup"?"block":"none";
+  document.querySelectorAll(".tab").forEach(b=>b.classList.remove("active"));
+  document.querySelector(`.tab[onclick*="${t}"]`).classList.add("active");
+}
+
+render();
+</script>
+</body>
+</html>
