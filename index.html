@@ -12,7 +12,6 @@
   h1{margin:0 0 6px;font-size:28px}
   h2{margin:0;font-size:18px}
   .muted{opacity:.75;font-size:12px}
-
   .tabs{display:flex;gap:8px;margin:10px 0 12px;flex-wrap:wrap}
   .tab{
     flex:1;min-width:120px;cursor:pointer;
@@ -82,19 +81,31 @@
     display:grid;grid-template-columns:160px 1fr 140px 120px 160px;
     gap:10px;align-items:center;margin:10px 0
   }
-  @media (max-width:760px){ .setupRow{grid-template-columns:1fr;gap:8px} }
-
   .setupRowPS{
     display:grid;grid-template-columns:160px 1fr 1fr 1fr 1fr;
     gap:10px;align-items:center;margin:10px 0
   }
-  @media (max-width:760px){ .setupRowPS{grid-template-columns:1fr;gap:8px} }
+  @media (max-width:760px){
+    .setupRow{grid-template-columns:1fr;gap:8px}
+    .setupRowPS{grid-template-columns:1fr;gap:8px}
+  }
 
   details{border:1px solid rgba(255,255,255,.08);border-radius:12px;background:#0f1a34}
   summary{list-style:none;cursor:pointer;padding:12px;font-weight:950}
   summary::-webkit-details-marker{display:none}
   details[open]>summary{border-bottom:1px solid rgba(255,255,255,.10)}
   .panel{padding:12px}
+
+  .legendBar{
+    display:none;
+    margin:10px 0 0;
+    background:#0f1a34;
+    border:1px solid rgba(255,255,255,.14);
+    border-radius:12px;
+    padding:10px;
+    font-size:13px;
+    opacity:.95
+  }
 </style>
 </head>
 <body>
@@ -123,6 +134,8 @@
         </div>
         <div class="meta" id="kpi"></div>
       </div>
+
+      <div id="psLegend" class="legendBar"></div>
       <div id="planWrap"></div>
     </div>
   </div>
@@ -185,9 +198,9 @@
 
 <script>
 (() => {
-  const LS_KEY = "BUILDS+PLANSTRONG_UNITYSTYLE_V1";
+  const LS_KEY = "BUILDS+PLANSTRONG_UNITYSTYLE_V2";
 
-  // 4-week wave (both systems)
+  // 4-week wave
   const WEEK_WAVE = [
     { pct: 0.15, name: "Deload" },
     { pct: 0.28, name: "Development" },
@@ -195,44 +208,53 @@
     { pct: 0.35, name: "Stress" },
   ];
 
-  // BuildStrong zones (BTS)
+  // BTS zones
   const BTS_ZONES = [
     { key:"H", name:"Heavy",  range:"4–7",   pct:0.15 },
     { key:"M", name:"Medium", range:"8–11",  pct:0.35 },
     { key:"L", name:"Light",  range:"12–15", pct:0.50 },
   ];
 
-  // PlanStrong intensity anchors (rep-ranges)
+  // PS rep anchors (UI only)
   const PS_RANGES = {
-    L: "8–12 RM",
-    M: "5–7 RM",
-    H: "3–4 RM",
+    L:"8–12 RM",
+    M:"5–7 RM",
+    H:"3–4 RM",
     SH:"2–3 RM"
   };
 
-  // PlanStrong session-position split inside a week (per lift):
-  // in a given week, each lift gets 15% once, 35% once, 50% once
-  const PS_SESSION_POS = [
+  // PS session position split within each lift's weekly reps
+  const PS_POS = [
     { key:"P15", name:"Lift 1", pct:0.15 },
     { key:"P35", name:"Lift 2", pct:0.35 },
     { key:"P50", name:"Lift 3", pct:0.50 },
   ];
 
-  // PlanStrong intensity splits (per session per lift)
+  // PS intensity splits
   const PS4_SPLIT = [
     { key:"L",  pct:0.50 },
     { key:"M",  pct:0.35 },
     { key:"H",  pct:0.15 },
   ];
   const PSA_SPLIT = [
-    { key:"SH", pct:0.05 }, // capped 1 rep per ladder
+    { key:"SH", pct:0.05 },
     { key:"H",  pct:0.12 },
     { key:"M",  pct:0.34 },
     { key:"L",  pct:0.49 },
   ];
 
+  // NEW: PS set caps (to avoid huge sets like 12-10-8)
+  // If any rung exceeds cap, we auto-add extra ladders above base 3/4.
+  const PS_SET_CAPS = {
+    L: 6,
+    M: 4,
+    H: 3,
+    SH: 1
+  };
+  const PS_MAX_LADDERS = 10;
+
   const TEMPLATES = {
-    // ===== BuildStrong (BTS) =====
+    // BuildStrong
     BTS3: {
       type:"BTS",
       name:"BTS3",
@@ -307,7 +329,7 @@
       ],
     },
 
-    // ===== PlanStrong (PS) =====
+    // PlanStrong
     PS4: {
       type:"PS",
       name:"PS4",
@@ -317,26 +339,12 @@
         {id:"push",  label:"Push"},
         {id:"pull",  label:"Pull"},
       ],
-      ladders:3,
+      baseLadders:3,
       split:PS4_SPLIT,
-      // 3 sessions/week. Each session has 3 slots (15/35/50 of the week's reps for that lift).
-      // Upper is always present, but it's push and pull separately and both take the session-slot pct.
       sessions:[
-        { title:"Session 1", slots:[
-          {lift:"squat", pos:"P15"},
-          {lift:"upper", pos:"P35"}, // expands to push+pull
-          {lift:"hinge", pos:"P50"},
-        ]},
-        { title:"Session 2", slots:[
-          {lift:"upper", pos:"P15"},
-          {lift:"hinge", pos:"P35"},
-          {lift:"squat", pos:"P50"},
-        ]},
-        { title:"Session 3", slots:[
-          {lift:"hinge", pos:"P15"},
-          {lift:"squat", pos:"P35"},
-          {lift:"upper", pos:"P50"},
-        ]},
+        { title:"Session 1", slots:[ {lift:"squat",pos:"P15"}, {lift:"upper",pos:"P35"}, {lift:"hinge",pos:"P50"} ]},
+        { title:"Session 2", slots:[ {lift:"upper",pos:"P15"}, {lift:"hinge",pos:"P35"}, {lift:"squat",pos:"P50"} ]},
+        { title:"Session 3", slots:[ {lift:"hinge",pos:"P15"}, {lift:"squat",pos:"P35"}, {lift:"upper",pos:"P50"} ]},
       ],
     },
 
@@ -349,24 +357,12 @@
         {id:"push",  label:"Push"},
         {id:"pull",  label:"Pull"},
       ],
-      ladders:4,
+      baseLadders:4,
       split:PSA_SPLIT,
       sessions:[
-        { title:"Session 1", slots:[
-          {lift:"squat", pos:"P15"},
-          {lift:"upper", pos:"P35"},
-          {lift:"hinge", pos:"P50"},
-        ]},
-        { title:"Session 2", slots:[
-          {lift:"upper", pos:"P15"},
-          {lift:"hinge", pos:"P35"},
-          {lift:"squat", pos:"P50"},
-        ]},
-        { title:"Session 3", slots:[
-          {lift:"hinge", pos:"P15"},
-          {lift:"squat", pos:"P35"},
-          {lift:"upper", pos:"P50"},
-        ]},
+        { title:"Session 1", slots:[ {lift:"squat",pos:"P15"}, {lift:"upper",pos:"P35"}, {lift:"hinge",pos:"P50"} ]},
+        { title:"Session 2", slots:[ {lift:"upper",pos:"P15"}, {lift:"hinge",pos:"P35"}, {lift:"squat",pos:"P50"} ]},
+        { title:"Session 3", slots:[ {lift:"hinge",pos:"P15"}, {lift:"squat",pos:"P35"}, {lift:"upper",pos:"P50"} ]},
       ],
     },
   };
@@ -375,10 +371,11 @@
   const esc = (s) => String(s ?? "").replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
   const mod = (n,m)=>((n%m)+m)%m;
 
-  // ===== BuildStrong (BTS) ladder rules =====
+  /* ======================
+     BTS ladder (C=66% RM)
+  ====================== */
   function capC(repMax){ return Math.max(1, Math.floor(0.66 * (Number(repMax)||1))); }
 
-  // choose a+b=C with delta20 between a and b (fallback if needed)
   function pickAB(C){
     const candidates=[];
     for (let a=1;a<=C-1;a++){
@@ -403,7 +400,6 @@
     return {a:ab.a,b:ab.b,C,volume:ab.a+ab.b+C};
   }
 
-  // leftover can be done as a single chunk <=C (simple, "clients don't need to know")
   function planBTS(targetReps, ladder){
     const t = Math.max(0, targetReps|0);
     const full = ladder.volume>0 ? Math.floor(t/ladder.volume) : 0;
@@ -412,26 +408,45 @@
     return { fullLadders: full, leftoverTotal: leftoverClamped };
   }
 
-  // ===== PlanStrong (PS) planning =====
+  /* ======================
+     PlanStrong planning
+  ====================== */
 
-  // Robust integer allocation with constraints and "fill SH"
+  function splitWeekIntoSessions(weekVolume){
+    const raw = PS_POS.map(p=>weekVolume*p.pct);
+    const base = raw.map(x=>Math.floor(x));
+    let used = base.reduce((a,b)=>a+b,0);
+    let rem = weekVolume - used;
+    const fr = raw.map((x,i)=>({i, frac:x - Math.floor(x)})).sort((a,b)=>b.frac-a.frac);
+    let j=0;
+    while (rem>0){
+      base[fr[j%fr.length].i] += 1;
+      rem--;
+      j++;
+    }
+    return {P15:base[0], P35:base[1], P50:base[2]};
+  }
+
+  function splitAcrossLadders(total, ladders){
+    const base = Math.floor(total / ladders);
+    const rem = total % ladders;
+    return Array.from({length:ladders}, (_,i)=>base + (i<rem ? 1 : 0)); // front-loaded
+  }
+
   function allocByPerc(total, split, opts={}){
     const items = split.map(s=>({key:s.key, pct:s.pct, raw:total*s.pct, base:Math.floor(total*s.pct), frac:(total*s.pct)%1}));
     let used = items.reduce((a,x)=>a+x.base,0);
     let rem = total - used;
 
-    // optional SH min=1 when total>0
+    const maxMap = opts.maxMap || {};
     if (opts.minKey && total>0){
       const it = items.find(x=>x.key===opts.minKey);
       if (it && it.base===0){
-        it.base = 1; rem -= 1;
+        it.base = 1;
+        rem -= 1;
       }
     }
 
-    // optional max caps
-    const maxMap = opts.maxMap || {};
-
-    // distribute remainder by largest fractional first
     items.sort((a,b)=>b.frac-a.frac);
     let i=0;
     while (rem>0 && i<10000){
@@ -442,9 +457,7 @@
         rem -= 1;
       }
       i++;
-      // if we loop too long due to caps, break
       if (i>items.length*20 && rem>0){
-        // dump remainder into last non-capped (prefer L)
         const pref = items.find(x=>x.key==="L") || items[0];
         const cap2 = (maxMap[pref.key] ?? Infinity);
         if (pref.base < cap2){ pref.base += 1; rem -= 1; }
@@ -452,7 +465,6 @@
       }
     }
 
-    // if rem went negative (due to minKey), pull back from largest buckets (prefer L then M)
     if (rem<0){
       const order = ["L","M","H","SH"];
       for (const k of order){
@@ -469,82 +481,96 @@
     return out;
   }
 
-  function splitAcrossLadders(total, ladders){
-    const base = Math.floor(total / ladders);
-    const rem = total % ladders;
-    const arr = Array.from({length:ladders}, (_,i)=>base + (i<rem ? 1 : 0)); // remainder front-loaded
-    return arr;
+  function maxIn(arr){ return arr.reduce((m,x)=>Math.max(m,x),0); }
+
+  // NEW: Determine ladders needed to satisfy set caps
+  function requiredLaddersForCaps(totals, baseLadders, templateKey){
+    let ladders = baseLadders;
+
+    while (ladders < PS_MAX_LADDERS){
+      // Estimate per ladder counts if evenly distributed
+      const L = maxIn(splitAcrossLadders(totals.L||0, ladders));
+      const M = maxIn(splitAcrossLadders(totals.M||0, ladders));
+      const H = maxIn(splitAcrossLadders(totals.H||0, ladders));
+      let SHmax = 0;
+      if (templateKey==="PSA"){
+        // SH is capped 1 per ladder anyway
+        const sh = totals.SH||0;
+        SHmax = sh>0 ? 1 : 0;
+      }
+
+      if (L<=PS_SET_CAPS.L && M<=PS_SET_CAPS.M && H<=PS_SET_CAPS.H && SHmax<=PS_SET_CAPS.SH){
+        return ladders;
+      }
+      ladders++;
+    }
+    return ladders;
   }
 
-  // Plan one PS lift instance: returns ladder lines and reps-per-ladder
+  // Plan one PS lift: allocate totals, then distribute over ladders (possibly > baseLadders)
   function planPSLift(sessionReps, templateKey){
     const tpl = TEMPLATES[templateKey];
-    const ladders = tpl.ladders;
     const split = tpl.split;
+    const baseLadders = tpl.baseLadders;
 
-    // SH caps: max 1 per ladder (so total SH <= ladders)
-    const maxMap = {};
+    // Allocate totals by percentage
+    let totals;
     if (templateKey==="PSA"){
-      maxMap["SH"] = ladders;
+      // SH total must be filled (min 1 if sessionReps>0), and capped by ladders later
+      totals = allocByPerc(sessionReps, split, {minKey:"SH"});
+      // Clamp SH to max possible later; we'll re-balance into L.
+      totals.SH = Math.max(0, totals.SH|0);
+    } else {
+      totals = allocByPerc(sessionReps, split, {});
     }
 
-    // Ensure SH "filled" (min 1 if sessionReps>0)
-    const totals = allocByPerc(sessionReps, split, templateKey==="PSA"
-      ? {minKey:"SH", maxMap}
-      : {});
+    // Determine ladders required by caps (auto extra ladders)
+    let ladders = requiredLaddersForCaps(totals, baseLadders, templateKey);
 
-    // Build per-ladder counts
-    const per = {};
-    for (const k of Object.keys(totals)){
-      per[k] = splitAcrossLadders(totals[k], ladders);
-    }
-
-    // Apply SH cap 1 per ladder (if any)
+    // Apply SH per ladder (cap 1 per ladder), and keep SH total but no more than ladders
+    let per = {};
     if (templateKey==="PSA"){
-      // force SH as 1s in first ladders until totals.SH
-      const sh = totals["SH"] || 0;
-      per["SH"] = Array.from({length:ladders}, (_,i)=> (i<sh ? 1 : 0));
-      // recompute L to fix sum back to sessionReps
-      const sumOther = ["H","M","SH"].reduce((a,k)=>a + (per[k]?per[k].reduce((x,y)=>x+y,0):0), 0);
-      const Lneeded = Math.max(0, sessionReps - sumOther);
-      per["L"] = splitAcrossLadders(Lneeded, ladders);
+      const shTotal = Math.min(totals.SH||0, ladders);
+      per.SH = Array.from({length:ladders}, (_,i)=> (i<shTotal ? 1 : 0));
+      // Recompute L/M/H on remaining reps
+      const usedSH = shTotal;
+      // Keep H/M targets from % on total (still OK), then dump remainder to L
+      // First distribute H/M from totals (as computed)
+      per.H = splitAcrossLadders(totals.H||0, ladders);
+      per.M = splitAcrossLadders(totals.M||0, ladders);
+
+      const sumHM = (totals.H||0) + (totals.M||0);
+      const Lneeded = Math.max(0, sessionReps - usedSH - sumHM);
+      per.L = splitAcrossLadders(Lneeded, ladders);
+
+      // Safety clamp: enforce caps by expanding ladders already done; still clamp per rung in worst case
+    } else {
+      per.L = splitAcrossLadders(totals.L||0, ladders);
+      per.M = splitAcrossLadders(totals.M||0, ladders);
+      per.H = splitAcrossLadders(totals.H||0, ladders);
     }
 
+    // Build lines and per-ladder rep totals
     const lines=[];
     const repsPerLadder=[];
     for (let i=0;i<ladders;i++){
-      const L = (per["L"]?.[i] ?? 0);
-      const M = (per["M"]?.[i] ?? 0);
-      const H = (per["H"]?.[i] ?? 0);
-      const SH= (per["SH"]?.[i] ?? 0);
-      const line = (tpl.name==="PS-A")
-        ? `${L}-${M}-${H}-${SH}`
-        : `${L}-${M}-${H}`;
-      lines.push(line);
+      const L = per.L?.[i] ?? 0;
+      const M = per.M?.[i] ?? 0;
+      const H = per.H?.[i] ?? 0;
+      const SH = per.SH?.[i] ?? 0;
+      lines.push(templateKey==="PSA"
+        ? `L${L} · M${M} · H${H} · SH${SH}`
+        : `L${L} · M${M} · H${H}`
+      );
       repsPerLadder.push(L+M+H+SH);
     }
-    return {lines, repsPerLadder, totals};
+
+    return {ladders, lines, repsPerLadder, totals};
   }
 
-  // Week reps per lift in PS: weekVolume = blockVolume * weekWavePct (example: 300*0.15=45)
-  // Session reps per lift: split weekVolume into [15,35,50]% by rounding + remainder fix
-  function splitWeekIntoSessions(weekVolume){
-    const raw = PS_SESSION_POS.map(p=>weekVolume*p.pct);
-    const base = raw.map(x=>Math.floor(x));
-    let used = base.reduce((a,b)=>a+b,0);
-    let rem = weekVolume - used;
-    // distribute remainder to largest fractional
-    const fr = raw.map((x,i)=>({i, frac:x - Math.floor(x)})).sort((a,b)=>b.frac-a.frac);
-    let j=0;
-    while (rem>0){
-      base[fr[j%fr.length].i] += 1;
-      rem--;
-      j++;
-    }
-    return {P15:base[0], P35:base[1], P50:base[2]};
-  }
-
-  // ===== State =====
+  /* ======================
+     State
+  ====================== */
 
   function buildDefaultStacksBTS(templateKey){
     const tpl=TEMPLATES[templateKey];
@@ -574,32 +600,14 @@
       blockVolume:300,
       sessionCursor:0,
 
-      // BTS
       btsStacks: buildDefaultStacksBTS("BTS6"),
-      btsRemaining:{}, // per movement per zone (block-level)
+      btsRemaining:{},
       btsProgress:{},
 
-      // PS
       psStacks: buildDefaultStacksPS(),
-      psRemaining:{},  // per lift total remaining reps for full block (blockVolume)
-      psProgress:{},   // per session per lift: laddersDone + appliedReps
+      psRemaining:{},
+      psProgress:{},
     };
-  }
-
-  function loadState(){
-    try{
-      const raw = localStorage.getItem(LS_KEY);
-      if (!raw) return initState(defaultState());
-      const st = JSON.parse(raw);
-      return initState(st);
-    }catch(e){
-      console.error(e);
-      return initState(defaultState());
-    }
-  }
-
-  function saveState(){
-    localStorage.setItem(LS_KEY, JSON.stringify(state));
   }
 
   function initState(st){
@@ -607,7 +615,7 @@
     if (!st.blockVolume) st.blockVolume=300;
     if (typeof st.sessionCursor!=="number") st.sessionCursor=0;
 
-    if (!st.btsStacks) st.btsStacks = buildDefaultStacksBTS(st.template.startsWith("BTS") ? st.template : "BTS6");
+    if (!st.btsStacks) st.btsStacks = buildDefaultStacksBTS("BTS6");
     if (!st.btsRemaining) st.btsRemaining={};
     if (!st.btsProgress) st.btsProgress={};
 
@@ -615,27 +623,35 @@
     if (!st.psRemaining) st.psRemaining={};
     if (!st.psProgress) st.psProgress={};
 
-    // ensure BTS stacks for template
-    if (TEMPLATES[st.template]?.type==="BTS"){
-      const tpl=TEMPLATES[st.template];
-      for (const mv of tpl.movements){
-        if (!st.btsStacks[mv.id]){
-          st.btsStacks[mv.id]={H:{exercise:"",load:"",repMax:5},M:{exercise:"",load:"",repMax:10},L:{exercise:"",load:"",repMax:15}};
-        }
-      }
+    // Ensure stacks match template
+    const tpl=TEMPLATES[st.template];
+    if (tpl.type==="BTS"){
+      st.btsStacks = buildDefaultStacksBTS(st.template);
       ensureBTSRemaining(st);
-    }
-
-    // ensure PS remaining
-    if (TEMPLATES[st.template]?.type==="PS"){
+    } else {
       ensurePSRemaining(st);
     }
     return st;
   }
 
-  let state = loadState();
+  function loadState(){
+    try{
+      const raw=localStorage.getItem(LS_KEY);
+      if (!raw) return initState(defaultState());
+      return initState(JSON.parse(raw));
+    }catch(e){
+      console.error(e);
+      return initState(defaultState());
+    }
+  }
 
-  // ===== BTS remaining/progress =====
+  let state = loadState();
+  function saveState(){ localStorage.setItem(LS_KEY, JSON.stringify(state)); }
+
+  /* ======================
+     BTS tracking
+  ====================== */
+
   function btsZoneTargets(blockVolume){
     const out={};
     for (const z of BTS_ZONES) out[z.key]=Math.round(Number(blockVolume)*z.pct);
@@ -649,13 +665,34 @@
     for (const mv of tpl.movements){
       st.btsRemaining[mv.id] = st.btsRemaining[mv.id] || {};
       for (const z of BTS_ZONES){
-        if (typeof st.btsRemaining[mv.id][z.key] !== "number") st.btsRemaining[mv.id][z.key] = tgt[z.key];
+        if (typeof st.btsRemaining[mv.id][z.key] !== "number") st.btsRemaining[mv.id][z.key]=tgt[z.key];
       }
     }
   }
 
   function btsProgressKey(globalWeekIndex, sessionIndex, blockIndex){
     return `${state.template}|v${state.blockVolume}|w${globalWeekIndex}|s${sessionIndex}|b${blockIndex}`;
+  }
+
+  function btsEnsureEntry(globalWeekIndex, sessionIndex, blockIndex){
+    const key=btsProgressKey(globalWeekIndex, sessionIndex, blockIndex);
+    if (!state.btsProgress[key]){
+      state.btsProgress[key]={doneLadders:0,leftoverDone:false,appliedReps:0};
+    }
+    return state.btsProgress[key];
+  }
+
+  function btsAppliedThisWeek(tpl, globalWeekIndex, movementId, zoneKey){
+    let total=0;
+    for (let sIdx=0; sIdx<tpl.sessions.length; sIdx++){
+      tpl.sessions[sIdx].blocks.forEach((blk, bi)=>{
+        if (blk.movement!==movementId || blk.zone!==zoneKey) return;
+        const key=btsProgressKey(globalWeekIndex, sIdx, bi);
+        const entry=state.btsProgress[key];
+        if (entry && typeof entry.appliedReps==="number") total += entry.appliedReps;
+      });
+    }
+    return total;
   }
 
   function btsCountOccurrencesPerWeek(tpl, movementId, zoneKey){
@@ -672,35 +709,13 @@
     return Math.round(Number(blockVolume) * phasePct * zonePct);
   }
 
-  function btsAppliedThisWeek(tpl, globalWeekIndex, movementId, zoneKey){
-    let total=0;
-    for (let sIdx=0; sIdx<tpl.sessions.length; sIdx++){
-      const session = tpl.sessions[sIdx];
-      session.blocks.forEach((blk, bi)=>{
-        if (blk.movement!==movementId || blk.zone!==zoneKey) return;
-        const key = btsProgressKey(globalWeekIndex, sIdx, bi);
-        const entry = state.btsProgress[key];
-        if (entry && typeof entry.appliedReps==="number") total += entry.appliedReps;
-      });
-    }
-    return total;
-  }
-
-  function btsEnsureEntry(globalWeekIndex, sessionIndex, blockIndex){
-    const key=btsProgressKey(globalWeekIndex, sessionIndex, blockIndex);
-    if (!state.btsProgress[key]){
-      state.btsProgress[key]={doneLadders:0,leftoverDone:false,appliedReps:0};
-    }
-    return state.btsProgress[key];
-  }
-
   function btsComputeApplied(doneLadders, ladder, leftoverTotal, leftoverDone){
     return (doneLadders|0)*ladder.volume + (leftoverDone ? (leftoverTotal|0) : 0);
   }
 
   function btsApplyDeltaToRemaining(mvId, zKey, delta){
-    const tgt = btsZoneTargets(state.blockVolume)[zKey];
-    const cur = state.btsRemaining[mvId][zKey];
+    const tgt=btsZoneTargets(state.blockVolume)[zKey];
+    const cur=state.btsRemaining[mvId][zKey];
     let next = cur - delta;
     next = Math.max(0, Math.min(tgt, next));
     state.btsRemaining[mvId][zKey]=next;
@@ -723,7 +738,7 @@
       btsApplyDeltaToRemaining(mvId, zKey, allowed);
       entry.appliedReps = oldApplied + allowed;
     } else if (delta<0){
-      btsApplyDeltaToRemaining(mvId, zKey, delta); // negative adds back
+      btsApplyDeltaToRemaining(mvId, zKey, delta);
       entry.appliedReps = nextApplied;
     }
 
@@ -732,10 +747,12 @@
     saveState();
   }
 
-  // ===== PS remaining/progress =====
+  /* ======================
+     PS tracking
+  ====================== */
+
   function ensurePSRemaining(st){
     st.psRemaining = st.psRemaining || {};
-    // each lift gets blockVolume reps across 4-week wave
     for (const lid of ["squat","hinge","push","pull"]){
       if (typeof st.psRemaining[lid] !== "number") st.psRemaining[lid] = Number(st.blockVolume)||300;
     }
@@ -753,27 +770,22 @@
     return state.psProgress[key];
   }
 
-  function psUpdate(globalWeekIndex, sessionIndex, liftId, repsPerLadder, newDone){
-    const tpl=TEMPLATES[state.template];
-    const ladders=tpl.ladders;
-    newDone = Math.max(0, Math.min(ladders, newDone|0));
-
-    const key=psKey(globalWeekIndex, sessionIndex, liftId);
-    const entry=state.psProgress[key];
+  function psUpdate(globalWeekIndex, sessionIndex, liftId, repsPerLadder, laddersTotal, newDone){
+    newDone = Math.max(0, Math.min(laddersTotal, newDone|0));
+    const entry=psEnsureEntry(globalWeekIndex, sessionIndex, liftId);
 
     const oldApplied = entry.appliedReps || 0;
     const nextApplied = repsPerLadder.slice(0,newDone).reduce((a,b)=>a+b,0);
-    let delta = nextApplied - oldApplied;
+    const delta = nextApplied - oldApplied;
 
     if (delta>0){
-      const remaining = state.psRemaining[liftId];
+      const remaining = state.psRemaining[liftId] ?? state.blockVolume;
       const allowed = Math.min(delta, remaining);
       state.psRemaining[liftId] = Math.max(0, remaining - allowed);
       entry.appliedReps = oldApplied + allowed;
 
-      // If we couldn't apply full delta due to remaining, clamp laddersDone down
       if (allowed < delta){
-        // find max ladders we can afford
+        // clamp laddersDone by affordability
         let can=0, acc=0;
         for (let i=0;i<repsPerLadder.length;i++){
           if (acc + repsPerLadder[i] <= remaining){ acc += repsPerLadder[i]; can++; }
@@ -785,8 +797,7 @@
         return;
       }
     } else if (delta<0){
-      // add back
-      state.psRemaining[liftId] = Math.min(state.blockVolume, state.psRemaining[liftId] + (-delta));
+      state.psRemaining[liftId] = Math.min(state.blockVolume, (state.psRemaining[liftId]||0) + (-delta));
       entry.appliedReps = nextApplied;
     }
 
@@ -794,7 +805,10 @@
     saveState();
   }
 
-  // ===== UI helpers =====
+  /* ======================
+     UI helpers
+  ====================== */
+
   function blockDonePct(){
     const tpl=TEMPLATES[state.template];
     if (tpl.type==="BTS"){
@@ -809,7 +823,6 @@
       const done = total - rem;
       return total>0 ? Math.round((done/total)*100) : 0;
     } else {
-      // PS: total block reps = blockVolume * 4 lifts
       const total = state.blockVolume * 4;
       const rem = ["squat","hinge","push","pull"].reduce((a,k)=>a+(state.psRemaining[k]||0),0);
       const done = total - rem;
@@ -817,31 +830,6 @@
     }
   }
 
-  function setRulesText(){
-    const tpl=TEMPLATES[state.template];
-    const el=$("#rulesText");
-    if (tpl.type==="BTS"){
-      el.innerHTML = `
-        Week-wave: <b>15–28–22–35</b> (Deload / Development / Maintenance / Stress)<br/>
-        Zone split (per week): <b>15% Heavy</b> / <b>35% Medium</b> / <b>50% Light</b><br/>
-        Ladder: <b>C = floor(0.66 × RM)</b>, choose <b>a+b=C</b>, enforce <b>delta20</b> between a and b.<br/>
-        Leftover is hidden; you tick <b>+L</b> to finish it.
-      `;
-    } else {
-      const isA = state.template==="PSA";
-      el.innerHTML = `
-        Week-wave: <b>15–28–22–35</b><br/>
-        Sessions/week: <b>3</b> • Each week each lift gets <b>15%</b>, <b>35%</b>, <b>50%</b> once.<br/>
-        Intensities every session via ladders (order always <b>L → M → H${isA ? " → SH":""}</b>).<br/>
-        ${isA
-          ? `PS-A split: <b>SH 5%</b> (cap 1 rep per ladder), <b>H 12%</b>, <b>M 34%</b>, <b>L 49%</b> • Ladders/lift: <b>4</b><br/>`
-          : `PS4 split: <b>L 50%</b>, <b>M 35%</b>, <b>H 15%</b> • Ladders/lift: <b>3</b><br/>`}
-        Rep-ranges (anchors): L <b>${PS_RANGES.L}</b> • M <b>${PS_RANGES.M}</b> • H <b>${PS_RANGES.H}</b>${isA ? ` • SH <b>${PS_RANGES.SH}</b>`:""}
-      `;
-    }
-  }
-
-  // ===== Rendering =====
   function renderKPI(phaseName){
     const tpl=TEMPLATES[state.template];
     $("#kpi").innerHTML = [
@@ -852,6 +840,43 @@
     ].join("");
   }
 
+  function setRulesText(){
+    const tpl=TEMPLATES[state.template];
+    const el=$("#rulesText");
+    if (tpl.type==="BTS"){
+      el.innerHTML = `
+        Week-wave: <b>15–28–22–35</b><br/>
+        Zone split (per week): <b>15% Heavy</b> / <b>35% Medium</b> / <b>50% Light</b><br/>
+        Ladder: <b>C = floor(0.66 × RM)</b>, choose <b>a+b=C</b>, delta20 between a and b.<br/>
+        Leftover is hidden; tick <b>+L</b> to complete it.
+      `;
+    } else {
+      const isA = state.template==="PSA";
+      el.innerHTML = `
+        Week-wave: <b>15–28–22–35</b><br/>
+        Sessions/week: <b>3</b> • Each lift hits <b>15%</b>, <b>35%</b>, <b>50%</b> once per week.<br/>
+        <b>Set order inside every ladder:</b> Set 1 = L, Set 2 = M, Set 3 = H${isA ? ", Set 4 = SH":""}.<br/>
+        ${isA
+          ? `PS-A split: <b>SH 5%</b> (cap 1 per ladder), <b>H 12%</b>, <b>M 34%</b>, <b>L 49%</b> • Base ladders: <b>4</b><br/>`
+          : `PS4 split: <b>L 50%</b>, <b>M 35%</b>, <b>H 15%</b> • Base ladders: <b>3</b><br/>`}
+        <b>Caps (auto extra ladders):</b> L ≤ ${PS_SET_CAPS.L}, M ≤ ${PS_SET_CAPS.M}, H ≤ ${PS_SET_CAPS.H}${isA ? `, SH ≤ ${PS_SET_CAPS.SH}`:""}.
+      `;
+    }
+  }
+
+  function movementLabel(mvId){
+    const tpl=TEMPLATES[state.template];
+    return (tpl.movements?.find(m=>m.id===mvId)?.label) || mvId;
+  }
+  function liftLabel(lid){
+    const tpl=TEMPLATES[state.template];
+    return (tpl.lifts?.find(l=>l.id===lid)?.label) || lid;
+  }
+
+  /* ======================
+     Rendering
+  ====================== */
+
   function renderPlanner(){
     const tpl=TEMPLATES[state.template];
     setRulesText();
@@ -859,17 +884,27 @@
     const wrap=$("#planWrap");
     wrap.innerHTML="";
 
-    // compute week/session
-    const sessionsPerWeek = tpl.type==="BTS" ? tpl.sessions.length : tpl.sessions.length;
+    const sessionsPerWeek = tpl.sessions.length;
     const cursor = state.sessionCursor|0;
+
     const globalWeekIndex = Math.floor(cursor / sessionsPerWeek);
     const week = globalWeekIndex + 1;
     const phase = WEEK_WAVE[mod(globalWeekIndex, WEEK_WAVE.length)];
     const sessionIdx = mod(cursor, sessionsPerWeek);
 
     $("#headTitle").textContent = `Week ${week} • Session ${sessionIdx+1}`;
-    $("#headSub").textContent = `${tpl.name} • ${tpl.type==="BTS" ? tpl.sessions[sessionIdx].title : tpl.sessions[sessionIdx].title} • ${phase.name}`;
+    $("#headSub").textContent = `${tpl.name} • ${tpl.sessions[sessionIdx].title} • ${phase.name}`;
     renderKPI(phase.name);
+
+    // PS legend
+    const legend=$("#psLegend");
+    if (tpl.type==="PS"){
+      legend.style.display="block";
+      legend.innerHTML = `Ladder order: <b>1️⃣ Light → 2️⃣ Medium → 3️⃣ Heavy${state.template==="PSA" ? " → 4️⃣ Super Heavy" : ""}</b>`;
+    } else {
+      legend.style.display="none";
+      legend.innerHTML="";
+    }
 
     if (tpl.type==="BTS"){
       ensureBTSRemaining(state);
@@ -880,7 +915,6 @@
 
       for (const zKey of ["H","M","L"]){
         const zMeta = BTS_ZONES.find(z=>z.key===zKey);
-
         const zoneDiv=document.createElement("div");
         zoneDiv.className="zone";
         zoneDiv.innerHTML = `<div class="zoneTitle"><b>${zMeta.name}</b><span>${zMeta.range}</span></div>`;
@@ -890,7 +924,6 @@
           const spec = state.btsStacks[mvId][zKey];
           const ladder = buildBTSLadder(spec.repMax);
 
-          // budgets
           const remainingBlock = Math.max(0, state.btsRemaining[mvId][zKey]);
           const weekTarget = btsWeekZoneTarget(state.blockVolume, phase.pct, zMeta.pct);
           const occ = Math.max(1, btsCountOccurrencesPerWeek(tpl, mvId, zKey));
@@ -905,7 +938,7 @@
           entry.doneLadders = Math.min(entry.doneLadders||0, plan.fullLadders);
           if (!plan.leftoverTotal) entry.leftoverDone = false;
 
-          const title = `${(tpl.movements.find(m=>m.id===mvId)?.label||mvId)}: ${spec.exercise || "—"}`;
+          const title = `${movementLabel(mvId)}: ${spec.exercise || "—"}`;
           const ladderText = `${ladder.a}-${ladder.b}-${ladder.C} × ${plan.fullLadders}`;
           const leftoverText = plan.leftoverTotal ? ` + leftover ${plan.leftoverTotal}` : "";
 
@@ -951,48 +984,45 @@
         }
         wrap.appendChild(zoneDiv);
       }
+
       saveState();
       return;
     }
 
-    // ===== PlanStrong planner =====
+    // ===== PS planner =====
     ensurePSRemaining(state);
 
     const psSession = tpl.sessions[sessionIdx];
-    const weekPerLift = Math.round(state.blockVolume * phase.pct); // e.g. 300*0.15=45
-    const posMap = splitWeekIntoSessions(weekPerLift);            // {P15,P35,P50} integers
 
-    // Render each slot in order (15/35/50 positions)
-    psSession.slots.forEach((slot, slotIdx)=>{
-      const pos = PS_SESSION_POS.find(p=>p.key===slot.pos);
-      const sessionRepsForThatLift = posMap[slot.pos];
+    // weekly reps per lift (for this week)
+    const weekPerLift = Math.round(state.blockVolume * phase.pct);
+    const posMap = splitWeekIntoSessions(weekPerLift); // integers
+
+    psSession.slots.forEach(slot=>{
+      const pos = PS_POS.find(p=>p.key===slot.pos);
+      const baseReps = posMap[slot.pos];
 
       const zoneDiv=document.createElement("div");
       zoneDiv.className="zone";
-      zoneDiv.innerHTML = `<div class="zoneTitle"><b>${pos.name} (${Math.round(pos.pct*100)}%)</b><span>Target reps: ${sessionRepsForThatLift}</span></div>`;
+      zoneDiv.innerHTML = `<div class="zoneTitle"><b>${pos.name} (${Math.round(pos.pct*100)}%)</b><span>Target reps: ${baseReps}</span></div>`;
 
-      // expand Upper into push/pull
       const liftsToRender = (slot.lift==="upper") ? ["push","pull"] : [slot.lift];
 
       liftsToRender.forEach(liftId=>{
-        const stack = state.psStacks[liftId] || {exercise:"",loadL:"",loadM:"",loadH:"",loadSH:""};
-        const title = `${(tpl.lifts.find(x=>x.id===liftId)?.label||liftId)}: ${stack.exercise || "—"}`;
-
-        // Cap by remaining (block level) — if remaining is low, clamp sessionReps
+        const stack = state.psStacks[liftId];
         const remaining = state.psRemaining[liftId] ?? state.blockVolume;
-        const sessionReps = Math.min(sessionRepsForThatLift, remaining);
+        const sessionReps = Math.min(baseReps, remaining);
 
-        const plan = planPSLift(sessionReps, state.template); // lines + repsPerLadder
+        const plan = planPSLift(sessionReps, state.template); // includes auto ladders
         const entry = psEnsureEntry(globalWeekIndex, sessionIdx, liftId);
-        const laddersTotal = tpl.ladders;
-        entry.laddersDone = Math.min(entry.laddersDone||0, laddersTotal);
+        entry.laddersDone = Math.min(entry.laddersDone||0, plan.ladders);
 
-        // Loads shown as compact label
+        const title = `${liftLabel(liftId)}: ${stack.exercise || "—"}`;
+
         const loadLine = (state.template==="PSA")
           ? `L(${PS_RANGES.L}): ${stack.loadL||"—"} • M(${PS_RANGES.M}): ${stack.loadM||"—"} • H(${PS_RANGES.H}): ${stack.loadH||"—"} • SH(${PS_RANGES.SH}): ${stack.loadSH||"—"}`
           : `L(${PS_RANGES.L}): ${stack.loadL||"—"} • M(${PS_RANGES.M}): ${stack.loadM||"—"} • H(${PS_RANGES.H}): ${stack.loadH||"—"}`;
 
-        // Ladder lines compact
         const ladderText = plan.lines.map((ln,i)=>`${i+1}) ${ln}`).join("  |  ");
 
         const item=document.createElement("div");
@@ -1008,7 +1038,7 @@
             <div class="mono">${esc(ladderText)}</div>
             <div class="ctrl">
               <button class="cbtn" data-dec>−</button>
-              <span class="cval">${entry.laddersDone||0}/${laddersTotal}</span>
+              <span class="cval">${entry.laddersDone||0}/${plan.ladders}</span>
               <button class="cbtn" data-inc>+</button>
             </div>
           </div>
@@ -1016,13 +1046,13 @@
         zoneDiv.appendChild(item);
 
         item.querySelector("[data-inc]").onclick = () => {
-          const next = Math.min(laddersTotal, (entry.laddersDone||0)+1);
-          psUpdate(globalWeekIndex, sessionIdx, liftId, plan.repsPerLadder, next);
+          const next = Math.min(plan.ladders, (entry.laddersDone||0)+1);
+          psUpdate(globalWeekIndex, sessionIdx, liftId, plan.repsPerLadder, plan.ladders, next);
           renderPlanner();
         };
         item.querySelector("[data-dec]").onclick = () => {
           const next = Math.max(0, (entry.laddersDone||0)-1);
-          psUpdate(globalWeekIndex, sessionIdx, liftId, plan.repsPerLadder, next);
+          psUpdate(globalWeekIndex, sessionIdx, liftId, plan.repsPerLadder, plan.ladders, next);
           renderPlanner();
         };
       });
@@ -1059,6 +1089,7 @@
             <input type="number" min="1" step="1" data-k="rm" value="${Number(spec.repMax||10)}">
             <div class="muted mono">${ladder.a}-${ladder.b}-${ladder.C}</div>
           `;
+
           const ex=row.querySelector('input[data-k="ex"]');
           const ld=row.querySelector('input[data-k="load"]');
           const rm=row.querySelector('input[data-k="rm"]');
@@ -1074,10 +1105,10 @@
 
     // PS custom
     const isA = state.template==="PSA";
-    $("#customHint").innerHTML = `PlanStrong: choose <b>4 lifts</b>. Anchors: L <b>${PS_RANGES.L}</b> • M <b>${PS_RANGES.M}</b> • H <b>${PS_RANGES.H}</b>${isA?` • SH <b>${PS_RANGES.SH}</b>`:""}.`;
+    $("#customHint").innerHTML =
+      `PlanStrong: choose <b>4 lifts</b>. Anchors: L <b>${PS_RANGES.L}</b> • M <b>${PS_RANGES.M}</b> • H <b>${PS_RANGES.H}</b>${isA?` • SH <b>${PS_RANGES.SH}</b>`:""}.`;
 
-    const lifts = TEMPLATES[state.template].lifts;
-    for (const lf of lifts){
+    for (const lf of tpl.lifts){
       const s = state.psStacks[lf.id];
 
       const card=document.createElement("div");
@@ -1107,7 +1138,6 @@
         card.appendChild(row2);
       }
 
-      // wire
       const ex=row.querySelector('input[data-k="ex"]');
       const l=row.querySelector('input[data-k="L"]');
       const m=row.querySelector('input[data-k="M"]');
@@ -1126,7 +1156,9 @@
     }
   }
 
-  // ===== Actions =====
+  /* ======================
+     Actions
+  ====================== */
   function resetThisSession(){
     const tpl=TEMPLATES[state.template];
     const sessionsPerWeek = tpl.sessions.length;
@@ -1144,7 +1176,6 @@
         delete state.btsProgress[key];
       });
     } else {
-      // PS: reset ladders for lifts in this session
       const session=tpl.sessions[sessionIdx];
       const liftIds=[];
       session.slots.forEach(slot=>{
@@ -1155,7 +1186,6 @@
         const key=psKey(globalWeekIndex, sessionIdx, liftId);
         const entry=state.psProgress[key];
         if (!entry) continue;
-        // add back applied reps to remaining
         state.psRemaining[liftId] = Math.min(state.blockVolume, (state.psRemaining[liftId]||0) + (entry.appliedReps||0));
         delete state.psProgress[key];
       }
@@ -1178,49 +1208,35 @@
   }
 
   function newBlock(){
-    // clear progress + remaining and reset cursor
     state.sessionCursor=0;
-    const tpl=TEMPLATES[state.template];
-    if (tpl.type==="BTS"){
-      state.btsProgress={};
-      state.btsRemaining={};
-      ensureBTSRemaining(state);
-    } else {
-      state.psProgress={};
-      state.psRemaining={};
-      ensurePSRemaining(state);
-    }
-    saveState();
+    clearAll();
   }
 
   function applyTemplateAndVolume(templateKey, volume){
-    const changed = templateKey !== state.template;
     state.template = templateKey;
     state.blockVolume = Number(volume)||300;
-    state.sessionCursor = 0;
+    state.sessionCursor=0;
 
     const tpl=TEMPLATES[state.template];
-
     if (tpl.type==="BTS"){
-      // build stacks for this BTS template if needed
       state.btsStacks = buildDefaultStacksBTS(state.template);
       state.btsProgress = {};
       state.btsRemaining = {};
       ensureBTSRemaining(state);
     } else {
-      // keep PS stacks; reset progress/remaining for new block volume
+      if (!state.psStacks) state.psStacks = buildDefaultStacksPS();
       state.psProgress = {};
       state.psRemaining = {};
       ensurePSRemaining(state);
     }
-
     saveState();
-    setRulesText();
     renderCustom();
     renderPlanner();
   }
 
-  // ===== Tabs =====
+  /* ======================
+     Tabs
+  ====================== */
   document.querySelectorAll(".tab").forEach(btn=>{
     btn.addEventListener("click",()=>{
       const t = btn.dataset.tab;
@@ -1229,7 +1245,9 @@
     });
   });
 
-  // ===== Wire UI =====
+  /* ======================
+     Wire UI
+  ====================== */
   $("#selTemplate").value = state.template;
   $("#selVol").value = String(state.blockVolume);
 
@@ -1257,7 +1275,7 @@
     renderPlanner();
   };
 
-  // ===== init =====
+  // init
   setRulesText();
   renderCustom();
   renderPlanner();
